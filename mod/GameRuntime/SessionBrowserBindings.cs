@@ -1,6 +1,7 @@
 using BepInEx.Logging;
 using HarmonyLib;
 using GwyfCommunity.Diagnostics;
+using Il2CppInterop.Runtime;
 
 namespace GwyfCommunity.Hooks.Game;
 
@@ -60,6 +61,129 @@ public sealed class SessionBrowserBindings : ILobbyHookBindings
 
     /// <summary>Formats a session info value for diagnostics (never the password).</summary>
     internal static string? AsString(Il2CppSystem.String? value) => value?.ToString();
+
+    internal static string DumpRoomProps(SessionInfo session)
+    {
+        try
+        {
+            var props = session.RoomInfo?.CustomProperties;
+            if (props is null) return "props=null";
+            if (props.Count == 0) return "props=0";
+            var sb = new System.Text.StringBuilder("props[");
+            var e = props.Keys.GetEnumerator();
+            var n = 0;
+            while (e.MoveNext() && n < 32)
+            {
+                var key = e.Current?.ToString() ?? "?";
+                object? value = null;
+                try { value = props[key]; } catch { }
+                if (n > 0) sb.Append(", ");
+                sb.Append(key).Append('=').Append(PropValueToString(value));
+                n++;
+            }
+            sb.Append(']');
+            return sb.ToString();
+        }
+        catch (Exception ex)
+        {
+            return $"props dump failed: {ex.Message}";
+        }
+    }
+
+    internal static string PropValueToString(object? value)
+    {
+        if (value is not Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase obj) return "null";
+        try
+        {
+            var clsName = ClassNameOf(obj);
+            switch (clsName)
+            {
+                case "String":
+                    return ReadNativeString(obj);
+                case "Int32":
+                    return obj.Unbox<int>().ToString();
+                case "Boolean":
+                    return obj.Unbox<bool>().ToString();
+                default:
+                    return $"<{clsName}>";
+            }
+        }
+        catch (Exception ex)
+        {
+            return $"<unreadable:{ex.Message}>";
+        }
+    }
+
+    /// <summary>
+    /// Reads a room custom property as a managed CLR value (string/int/bool).
+    /// Returns null when the key is absent, unreadable or not one of those.
+    /// </summary>
+    internal static object? ReadRoomProp(SessionInfo session, string key)
+    {
+        try
+        {
+            var props = session.RoomInfo?.CustomProperties;
+            if (props is null || props.Count == 0) return null;
+            object? value;
+            try { value = props[key]; } catch { return null; }
+            if (value is not Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase obj) return null;
+            var clsName = ClassNameOf(obj);
+            switch (clsName)
+            {
+                case "String":
+                    return ReadNativeString(obj);
+                case "Int32":
+                    return obj.Unbox<int>();
+                case "Boolean":
+                    return obj.Unbox<bool>();
+                default:
+                    return null;
+            }
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    internal static string? RoomPropString(SessionInfo session, string key) =>
+        ReadRoomProp(session, key) as string;
+
+    private static string ClassNameOf(Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase obj) =>
+        System.Runtime.InteropServices.Marshal.PtrToStringUTF8(IL2CPP.il2cpp_class_get_name(obj.ObjectClass));
+
+    private static string ReadNativeString(Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase obj)
+    {
+        unsafe
+        {
+            return System.Runtime.InteropServices.Marshal.PtrToStringUni(
+                new IntPtr(IL2CPP.il2cpp_string_chars(obj.Pointer)), IL2CPP.il2cpp_string_length(obj.Pointer));
+        }
+    }
+
+    /// <summary>Host name arrives base64-encoded; decode when valid.</summary>
+    internal static string? DecodeHostName(string? raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return raw;
+        try
+        {
+            var bytes = Convert.FromBase64String(raw);
+            var decoded = System.Text.Encoding.UTF8.GetString(bytes);
+            return decoded.Contains('\0') ? raw : decoded;
+        }
+        catch (FormatException)
+        {
+            return raw;
+        }
+    }
+
+    /// <summary>Course arrives as a localization key like Level.Name.PirateCove.</summary>
+    internal static string NormalizeCourseKey(string? raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return "";
+        const string prefix = "Level.Name.";
+        return raw.StartsWith(prefix) ? raw.Substring(prefix.Length) : raw;
+    }
 }
 
 /// <summary>
@@ -107,6 +231,16 @@ internal static class PluginPatches
             var results = PluginReflection.SnapshotControllers(list, owner);
 
             _owner?.Diagnostics.RecordSearch(results.Count, results.Select(r => r.LobbyId ?? "").ToArray());
+            owner.Log.Info($"[Hook] search refresh: {results.Count} sessions");
+            for (var i = 0; i < results.Count; i++)
+            {
+                var s = results[i];
+                owner.Log.Info($"[Hook] session[{i}]: id={s.LobbyId ?? "null"} name={s.Name ?? "null"} members={s.MemberCount?.ToString() ?? "null"}/{s.Capacity?.ToString() ?? "null"} map={s.MapName ?? "null"} mode={s.GameMode ?? "null"}");
+                foreach (var meta in s.Metadata ?? new Dictionary<string, string>())
+                {
+                    owner.Log.Info($"[Hook]   {meta.Key}={meta.Value}");
+                }
+            }
 
             // lifecycle: this refresh completes the previous search batch, opens a new
             // one when the enumeration state requested it.
@@ -208,19 +342,27 @@ internal static class PluginReflection
         try
         {
             ok = true;
+            var roomName = SessionBrowserBindings.AsString(session.RoomInfo?.Name);
+            var props = session.RoomInfo?.CustomProperties;
+            var platformRoomId = SessionBrowserBindings.RoomPropString(session, "PLATFORMROOMID");
+            var hostName = SessionBrowserBindings.RoomPropString(session, "C1");
+            var courseKey = SessionBrowserBindings.RoomPropString(session, "C2");
             return new LobbySnapshot
             {
-                LobbyId = SessionBrowserBindings.AsString(session.UniqueRoomId),
-                Name = SessionBrowserBindings.AsString(session.HostName),
+                LobbyId = platformRoomId ?? SessionBrowserBindings.AsString(session.UniqueRoomId) ?? "",
+                Name = SessionBrowserBindings.DecodeHostName(hostName) ?? SessionBrowserBindings.AsString(session.HostName) ?? "",
                 MemberCount = session.PlayerCount,
                 Capacity = session.MaxPlayerCount,
-                MapName = SessionBrowserBindings.AsString(session.CourseName),
+                MapName = SessionBrowserBindings.NormalizeCourseKey(courseKey) ?? SessionBrowserBindings.AsString(session.CourseName) ?? "",
                 GameMode = session.GameMode.ToString(),
                 Metadata = new Dictionary<string, string>
                 {
                     ["lobbyType"] = session.LobbyType.ToString(),
                     ["isVisible"] = session.Isvisible.ToString(),
                     ["identifier"] = SessionBrowserBindings.AsString(session.Identifier) ?? "null",
+                    ["roomName"] = roomName ?? "null",
+                    ["roomProps"] = props is null ? "null" : props.Count.ToString(),
+                    ["props"] = SessionBrowserBindings.DumpRoomProps(session),
                 },
             };
         }

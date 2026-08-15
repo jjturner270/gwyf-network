@@ -59,7 +59,10 @@ public sealed class LobbyObserver
         var lobbyId = snapshot.LobbyId?.Trim();
         if (string.IsNullOrEmpty(lobbyId))
         {
-            OnHookIssue($"lobby without id skipped: {snapshot.Name ?? "?"}");
+            // only surface hook issues during an active search; the refresh loop
+            // otherwise calls back with placeholder sessions on the menu screen
+            if (_activeSearchId is not null)
+                OnHookIssue($"lobby without id skipped: {snapshot.Name ?? "?"}");
             return;
         }
         if (snapshot.MemberCount is not int members || snapshot.Capacity is not int capacity)

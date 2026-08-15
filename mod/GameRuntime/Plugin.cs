@@ -59,10 +59,13 @@ public sealed class Plugin : BasePlugin
 
         _queue.SubmissionFailed += reason =>
         {
-            _diagnostics.LastError = reason;
+            var detail = _network.LastError is { } networkError && networkError != reason
+                ? $"{reason} ({networkError})"
+                : reason;
+            _diagnostics.LastError = detail;
             _diagnostics.ServiceOnline = false;
             _diagnostics.PendingUploads = _queue.PendingCount;
-            Log.LogWarning($"observation submission failed: {reason}");
+            Log.LogWarning($"observation submission failed: {detail}");
         };
         _queue.SubmissionSucceeded += (accepted, duplicates, rejected) =>
         {
@@ -104,6 +107,13 @@ public sealed class Plugin : BasePlugin
             {
                 EventType = eventType,
                 Context = new Dictionary<string, object> { ["context"] = context },
+                Observer = new ObserverInfo
+                {
+                    InstallationId = _identity.ObserverId,
+                    ClientVersion = ModVersions.Client,
+                    GameBuild = ModVersions.GameBuild,
+                    SearchScope = "default",
+                },
             }),
             observerId);
 
@@ -123,6 +133,19 @@ public sealed class Plugin : BasePlugin
             {
                 await Task.Delay(delay, ct);
                 if (!config.NetworkEnabled) continue;
+                if (!_network.IsRegistered)
+                {
+                    try
+                    {
+                        await _network.RegisterObserverAsync(ModVersions.Client, _diagnostics.GameBuild, ct);
+                        _network.IsRegistered = true;
+                        Log.LogInfo($"observer {_identity.ObserverId} registered");
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.LogWarning($"observer registration failed: {ex.Message}");
+                    }
+                }
                 await _queue.FlushAsync(_network.SendBatchAsync, ct);
                 _diagnostics.PendingUploads = _queue.PendingCount;
             }

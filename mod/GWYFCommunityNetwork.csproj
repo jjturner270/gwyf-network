@@ -7,6 +7,7 @@
     <LangVersion>latest</LangVersion>
     <AssemblyName>GWYFCommunityNetwork</AssemblyName>
     <RootNamespace>GwyfCommunity</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Version>0.2.0</Version>
   </PropertyGroup>
 
@@ -34,6 +35,8 @@
   <ItemGroup Condition="Exists('$(GWYF_REFS)')">
     <!-- IL2CPP builds name the interop game assembly Assembly-CSharp.dll (no prefix). -->
     <Reference Include="Assembly-CSharp"><HintPath>$(GWYF_REFS)/Assembly-CSharp.dll</HintPath></Reference>
+    <Reference Include="Assembly-CSharp-firstpass"><HintPath>$(GWYF_REFS)/Assembly-CSharp-firstpass.dll</HintPath></Reference>
+    <Reference Include="Photon3Unity3D"><HintPath>$(GWYF_REFS)/Photon3Unity3D.dll</HintPath></Reference>
     <Reference Include="UnityEngine"><HintPath>$(GWYF_REFS)/UnityEngine.dll</HintPath></Reference>
     <Reference Include="UnityEngine.CoreModule"><HintPath>$(GWYF_REFS)/UnityEngine.CoreModule.dll</HintPath></Reference>
     <Reference Include="Il2Cppmscorlib"><HintPath>$(GWYF_REFS)/Il2Cppmscorlib.dll</HintPath></Reference>

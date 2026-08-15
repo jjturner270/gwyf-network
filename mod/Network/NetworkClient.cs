@@ -42,6 +42,7 @@ public sealed class NetworkClient
     public string? LastError { get; private set; }
     public string? LastRejectedReason { get; private set; }
     public string? LastRejectedSightingId { get; private set; }
+    public bool IsRegistered { get; set; }
 
     public NetworkClient(Uri baseUrl, IObserverIdentity identity, string modVersion, TimeSpan? requestTimeout = null)
     {
