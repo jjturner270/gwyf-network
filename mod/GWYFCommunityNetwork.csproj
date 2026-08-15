@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>GWYFCommunityNetwork</AssemblyName>
+    <RootNamespace>GwyfCommunity</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    Point GWYF_REFS and BEPINEX_REFS at the folders containing:
+    - BepInEx.Core.dll, BepInEx.Unity.dll
+    - UnityEngine.CoreModule.dll, UnityEngine.dll
+    - Assembly-CSharp.dll (Golf With Your Friends)
+  -->
+  <ItemGroup Condition="Exists('$(GWYF_REFS)')">
+    <Reference Include="BepInEx.Core"><HintPath>$(GWYF_REFS)/BepInEx.Core.dll</HintPath></Reference>
+    <Reference Include="BepInEx.Unity"><HintPath>$(GWYF_REFS)/BepInEx.Unity.dll</HintPath></Reference>
+    <Reference Include="UnityEngine"><HintPath>$(GWYF_REFS)/UnityEngine.dll</HintPath></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(GWYF_REFS)/UnityEngine.CoreModule.dll</HintPath></Reference>
+    <Reference Include="Assembly-CSharp"><HintPath>$(GWYF_REFS)/Assembly-CSharp.dll</HintPath></Reference>
+  </ItemGroup>
+
+</Project>

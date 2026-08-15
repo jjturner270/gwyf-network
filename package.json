@@ -1,0 +1,35 @@
+{
+  "name": "gwyf-community",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A crowdsourced observability network and historical atlas for Golf With Your Friends",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @gwyf/api dev",
+    "build": "pnpm -r build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev:emit-lobby": "pnpm --filter @gwyf/scripts emit-lobby",
+    "db:generate": "pnpm --filter @gwyf/db generate",
+    "db:migrate": "pnpm --filter @gwyf/db migrate"
+  },
+  "dependencies": {
+    "@gwyf/db": "workspace:*",
+    "@gwyf/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild"
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@gwyf/scripts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "emit-lobby": "tsx src/emit-lobby.ts"
+  },
+  "dependencies": {
+    "@gwyf/protocol": "workspace:*",
+    "tsx": "^4.19.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}
