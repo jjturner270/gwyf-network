@@ -11,8 +11,12 @@ class TokenBucket {
   }
 
   take(now = Date.now()): boolean {
-    this.tokens = Math.min(this.capacity, this.tokens + ((now - this.lastRefill) * this.refillPerMs) / 1000);
-    this.lastRefill = now;
+    // A clock that ever moves backward (test clock, NTP, wall-clock races) must
+    // never drain the bucket: refill is clamped to >= 0 and lastRefill never
+    // regresses, otherwise a single backward step trips a permanent 429.
+    const elapsed = Math.max(0, now - this.lastRefill);
+    this.tokens = Math.min(this.capacity, this.tokens + (elapsed * this.refillPerMs) / 1000);
+    this.lastRefill = Math.max(this.lastRefill, now);
     if (this.tokens < 1) return false;
     this.tokens -= 1;
     return true;
