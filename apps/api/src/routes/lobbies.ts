@@ -4,11 +4,13 @@ import type { LobbyStatus } from "@gwyf/protocol";
 import type { AppDeps } from "../deps.js";
 import {
   deriveLobbyState,
+  RECENT_OBSERVER_WINDOW_MS,
   STALE_MAX_AGE_MS,
   type LobbyLiveState,
 } from "../services/derive-lobby-state.js";
 import { deriveLobbySessions } from "../services/derive-lobby-sessions.js";
 import { listLobbyIds, lobbyRowsFor, lobbyHistoryRows } from "../services/lobby-repo.js";
+import { countActiveObservers } from "../services/observers.js";
 
 const LIVE_WINDOW_MS = STALE_MAX_AGE_MS;
 
@@ -95,6 +97,7 @@ export function lobbiesRoutes(app: FastifyInstance, deps: AppDeps): void {
     return {
       generatedAt: new Date(now).toISOString(),
       count: filtered.length,
+      activeObservers: await countActiveObservers(deps.db, now - RECENT_OBSERVER_WINDOW_MS),
       lobbies: filtered.slice(0, 200).map(toResponse),
     };
   });

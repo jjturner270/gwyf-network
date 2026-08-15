@@ -1,0 +1,10 @@
+{
+  "name": "@gwyf/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Public live lobby browser. Static, no build step: serve this folder and set API_BASE_URL in src/config.js.",
+  "scripts": {
+    "build": "node --input-type=module -e \"await import('./src/app.js')\""
+  }
+}

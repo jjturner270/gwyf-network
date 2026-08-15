@@ -44,6 +44,7 @@ POST /v1/ingest/*        → collector (signed, validated)
 SQLite (append-only)     → memory
 derivation services      → interpretation (on-read, pure over sightings)
 GET /v1/lobbies/*        → interface
+apps/web (static page)   → public lobby radar, zero-auth, polls /v1/lobbies/live
 ```
 
 Core invariants:
@@ -61,9 +62,10 @@ packages/
   db/           drizzle schema, SQL migrations, WAL better-sqlite3 client
 apps/
   api/          Fastify: ingest, observers, public lobby routes, derivation
+  web/          static public lobby radar (no build, one runtime config: API base URL)
 scripts/        emit-lobby.ts — fake-mod dev harness
 mod/            BepInEx C# skeleton (Plugin, observers, queue, network, diagnostics)
-tests/          vitest: protocol, derivation, and the full API chain
+tests/          vitest: protocol, derivation, the web page, and the full API chain
 ```
 
 ## Quickstart
@@ -76,12 +78,19 @@ pnpm install
 pnpm dev                # API on :3000 (first boot applies migrations)
 pnpm dev:emit-lobby     # in another terminal — two fake mod clients
 curl -s localhost:3000/v1/lobbies/live
+
+# public lobby radar — open apps/web/index.html in a browser (no server needed)
+pnpm --filter @gwyf/web build  # validates the page runs as a module; serves nothing
 ```
+
+The radar page has no build step and no dependencies. `apps/web/src/config.js`
+sets the default API base URL (`http://127.0.0.1:3000`), or override per page
+visit with a query param: `index.html?api=http://127.0.0.1:3000`.
 
 The emit script simulates three lobbies: one corroborated by both observers, one that fades (watch it degrade `active → likely_active → stale → expire`), one single-observer. Observer keys persist in `scripts/.keys/` so restarts keep the same identity.
 
 ```bash
-pnpm test               # 64 tests: protocol, derivation, reconciliation, API chain
+pnpm test               # 83 tests: protocol, derivation, reconciliation, API chain, web page
 pnpm build              # typecheck + compile all packages
 ```
 
@@ -95,7 +104,7 @@ pnpm build              # typecheck + compile all packages
 | POST | `/v1/ingest/course-sightings` | same contract |
 | POST | `/v1/ingest/events` | diagnostic runtime events |
 | POST | `/v1/ingest/batch` | mixed schemas, per-item results |
-| GET | `/v1/lobbies/live` | radar: last 5 min, `?status=&map=&mode=&sort=&minPlayers=` |
+| GET | `/v1/lobbies/live` | radar: last 5 min, `?status=&map=&mode=&sort=&minPlayers=`; anonymous GETs get `Access-Control-Allow-Origin: *` for the public page; includes `activeObservers` (active observers who reported in the last 45 s) |
 | GET | `/v1/lobbies` | full listing, `?sinceHours=` |
 | GET | `/v1/lobbies/:steamLobbyId` | current derived state |
 | GET | `/v1/lobbies/:steamLobbyId/history` | inferred sessions, 30-min gap splits |
@@ -256,7 +265,8 @@ Public by default: lobby ids, names, player counts, maps, timestamps, aggregate 
 
 ## Next slices
 
-1. Radar web page — the public surface becomes more informative than one player's vanilla browser
+1. Deploy the API and the static `apps/web` radar page (public URL) and bake that
+   origin into the installer so a stranger's page shows lobbies without config
 2. Course fingerprints (`SceneFingerprint` needs a real normalized scene snapshot pipeline)
 3. Map atlas + version lineage
 4. Community layer (tags, creator claims) — only after the observation network produces useful data on its own

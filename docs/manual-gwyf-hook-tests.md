@@ -317,6 +317,37 @@ In-game checks:
       restart API → flush continues (unit: `PostGateOutage_KeepsObservationRunning`)
 - [ ] `network.enabled=false` in config → `STATUS  INGEST DISABLED`, no fetch attempted
 
+## Public lobby radar (apps/web)
+
+A static, zero-auth page in `apps/web/` polls `GET /v1/lobbies/live` once per
+poll interval (5 s) and renders whatever the server derives. No build step; the
+only runtime config is the API base URL (`apps/web/src/config.js`, overridable
+per visit with `?api=...`). Behavior proven in `tests/web.test.ts` (page) and
+`tests/api.test.ts` (`network presence aggregate`): freshness labels
+`LIVE`/`LIKELY ACTIVE`/`STALE` map the server statuses, `expired` lobbies are
+never rendered, an empty list is rendered as "no lobbies being observed" (never
+"0 lobbies" on failure), a transport/server error is rendered as "community
+network unavailable", and the observer count is a distinct active-observer
+aggregate (`activeObservers`), not a lobby-derived number.
+
+Acceptance — with one observer running in the game (or the emit harness), a
+real GWYF lobby appears on the page within one polling interval and disappears
+according to the server freshness rules after observations stop.
+
+- [ ] `pnpm test` (83) and `pnpm build` green with the page + aggregate in place
+- [ ] API up, no observers → page shows "No lobbies are currently being observed"
+- [ ] `pnpm --filter @gwyf/scripts emit-lobby -- --observers 1` → lobby cards
+      appear within one poll interval (`LIVE`, `N ACTIVE OBSERVERS`, `UPDATED Xs AGO`)
+- [ ] Badge/no-badge transitions match `/v1/lobbies/live` statuses:
+      `active`→LIVE, `likely_active`→LIKELY ACTIVE, `stale`→STALE; `expired` → card gone
+- [ ] Emit script finishes → lobby stays `STALE`, then disappears; page returns to empty state
+- [ ] API stopped → page shows "Community network unavailable. Trying again…",
+      never a false "0 lobbies"; API back → recovers on next poll
+- [ ] `GET /v1/lobbies/live` from the page's origin is allowed (CORS `*`); POST stays closed
+- [ ] Observer-count tooltip appears (title) and matches `activeObservers`
+- [ ] `index.html?api=http://127.0.0.1:3000` overrides the default base URL
+- [ ] No code changes required → web radar slice accepted
+
 ## Release
 
 ```text

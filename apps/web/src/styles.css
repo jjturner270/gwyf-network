@@ -1,0 +1,119 @@
+:root {
+  color-scheme: dark;
+  --bg: #101418;
+  --panel: #171d24;
+  --panel-border: #262e38;
+  --text: #e8edf2;
+  --muted: #9aa7b5;
+  --accent: #4cc38a;
+  --warn: #e0a94b;
+  --muted-badge: #70808f;
+  --offline: #e06c5f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 24px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+h1 {
+  font-size: 20px;
+  letter-spacing: 0.12em;
+  color: var(--text);
+}
+
+.status {
+  margin: 4px 0 16px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.status-offline {
+  color: var(--offline);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.badge-live {
+  background: rgba(76, 195, 138, 0.15);
+  color: var(--accent);
+}
+
+.badge-likely-active {
+  background: rgba(224, 169, 75, 0.15);
+  color: var(--warn);
+}
+
+.badge-stale {
+  background: rgba(112, 128, 143, 0.18);
+  color: var(--muted-badge);
+}
+
+.meta,
+.players,
+.seen {
+  color: var(--muted);
+}
+
+.players {
+  margin: 2px 0;
+  color: var(--text);
+}
+
+.seen {
+  font-size: 12px;
+}
+
+.message {
+  grid-column: 1 / -1;
+  background: var(--panel);
+  border: 1px dashed var(--panel-border);
+  border-radius: 8px;
+  padding: 24px;
+  white-space: pre-line;
+  color: var(--muted);
+  text-align: center;
+}
+
+.footnote {
+  margin-top: 18px;
+  font-size: 12px;
+  color: var(--muted-badge);
+}

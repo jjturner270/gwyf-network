@@ -32,6 +32,15 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
   app.get("/healthz", async () => ({ status: "ok" }));
 
+  // Public read surface (live lobby browser, client config) is consumed from a
+  // static page on another origin. Allow cross-origin GET reads; POST remains
+  // signature-authenticated and browser-visible, so nothing weakens.
+  app.addHook("onSend", async (request, reply) => {
+    if (request.method === "GET") {
+      reply.header("access-control-allow-origin", "*");
+    }
+  });
+
   app.get("/", async () => ({
     service: "gwyf-community",
     version: "0.1.0",

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, count, eq, gt } from "drizzle-orm";
 import { observers } from "@gwyf/db";
 import type { GwyfDb } from "@gwyf/db";
 import { deriveObserverId } from "@gwyf/protocol";
@@ -58,4 +58,17 @@ export async function observeActivity(db: GwyfDb, observerId: string, now = Date
     .update(observers)
     .set({ lastSeenAt: now })
     .where(and(eq(observers.observerId, observerId)));
+}
+
+/**
+ * Distinct observers who contributed an observation (or registered) at or after
+ * `sinceMs`. Drives the public page's "N ACTIVE OBSERVERS" header line — an
+ * honest aggregate, never derived from lobby results.
+ */
+export async function countActiveObservers(db: GwyfDb, sinceMs: number): Promise<number> {
+  const rows = await db
+    .select({ value: count() })
+    .from(observers)
+    .where(and(eq(observers.status, "active"), gt(observers.lastSeenAt, sinceMs)));
+  return rows[0]?.value ?? 0;
 }

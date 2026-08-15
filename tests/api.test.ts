@@ -551,3 +551,68 @@ describe("adversarial ingest", () => {
     expect(retained.lastSeenAt).toBe(at(-5_000));
   });
 });
+
+describe("network presence aggregate", () => {
+  let presenceDb: GwyfDb;
+  let presenceApi: ReturnType<typeof buildApp>;
+  const pairG = generateObserverKeyPair();
+  const LOBBY_PRESENCE = "55009988776655441";
+
+  beforeAll(async () => {
+    const client = createClient(":memory:");
+    migrate(client.sqlite);
+    presenceDb = client.db;
+    presenceApi = buildApp({
+      db: presenceDb,
+      config: loadConfig({}),
+      onDeps: (deps) => {
+        deps.now = () => now();
+      },
+    });
+    await presenceApi.ready();
+  });
+
+  it("counts recently contributing observers and enables CORS for the public page", async () => {
+    advance(BASE - NOW);
+    const registration = await presenceApi.inject({
+      method: "POST",
+      url: "/v1/observers",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({
+        publicKey: pairG.publicKeyHex,
+        clientVersion: "0.3.0",
+        protocolVersion: 1,
+      }),
+    });
+    expect(registration.statusCode).toBe(201);
+
+    const body = lobbySightingBody(pairG, LOBBY_PRESENCE, at(0));
+    const ingested = await presenceApi.inject({
+      method: "POST",
+      url: "/v1/ingest/lobby-sightings",
+      headers: {
+        "content-type": "application/json",
+        "x-observer-id": deriveObserverId(pairG.publicKeyHex),
+        "x-observer-signature": signBytes(pairG, body),
+      },
+      payload: body,
+    });
+    expect(ingested.statusCode).toBe(202);
+
+    const live = await presenceApi.inject({ method: "GET", url: "/v1/lobbies/live" });
+    expect(live.statusCode).toBe(200);
+    expect(live.headers["access-control-allow-origin"]).toBe("*");
+    const soonAfter = JSON.parse(live.body);
+    expect(soonAfter.activeObservers).toBeGreaterThanOrEqual(1);
+  });
+
+  it("drops an observer from the aggregate once its activity ages past the window", async () => {
+    advance(BASE - NOW + 60_000);
+    const live = await presenceApi.inject({ method: "GET", url: "/v1/lobbies/live" });
+    const aged = JSON.parse(live.body);
+    expect(aged.activeObservers).toBe(0);
+    const lobby = aged.lobbies.find((l: { lobbyId: string }) => l.lobbyId === LOBBY_PRESENCE);
+    expect(lobby).toBeDefined();
+    expect(lobby.status).toBe("likely_active");
+  });
+});
