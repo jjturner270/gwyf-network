@@ -284,9 +284,6 @@ public class ObservationQueueTests
     {
         var backoff = new IntervalBackoff();
 
-        static long Current() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-
-        var predictions = new List<double>();
         for (var failure = 1; failure <= 6; failure++)
         {
             backoff.RegisterFailure(failure);

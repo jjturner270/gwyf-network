@@ -41,6 +41,7 @@ public sealed class NetworkClient
 
     public string? LastError { get; private set; }
     public string? LastRejectedReason { get; private set; }
+    public string? LastRejectedSightingId { get; private set; }
 
     public NetworkClient(Uri baseUrl, IObserverIdentity identity, string modVersion, TimeSpan? requestTimeout = null)
     {
@@ -86,7 +87,9 @@ public sealed class NetworkClient
             {
                 LastError = null;
                 var ack = JsonSerializer.Deserialize<IngestAck>(await response.Content.ReadAsStringAsync(ct));
-                LastRejectedReason = ack?.Items.FirstOrDefault(i => i.Action == "rejected")?.Reason;
+                var rejected = ack?.Items.FirstOrDefault(i => i.Action == "rejected");
+                LastRejectedReason = rejected?.Reason;
+                LastRejectedSightingId = rejected is null ? null : ExtractSightingId(payloads, rejected.Index);
                 return ack ?? new IngestAck();
             }
 
@@ -130,5 +133,13 @@ public sealed class NetworkClient
     {
         s = s.Replace('\n', ' ').Replace('\r', ' ');
         return s.Length <= max ? s : s[..max] + "…";
+    }
+
+    private static string? ExtractSightingId(IReadOnlyList<object> payloads, int index)
+    {
+        if (index < 0 || index >= payloads.Count || payloads[index] is not JsonElement element) return null;
+        return element.TryGetProperty("sightingId", out var id) && id.ValueKind == JsonValueKind.String
+            ? id.GetString()
+            : null;
     }
 }

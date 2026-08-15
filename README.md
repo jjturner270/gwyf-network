@@ -19,6 +19,9 @@ Phase 0–2 of the MVP is built and proven end-to-end:
 - Lobby derivation with explainable confidence (`active` / `likely_active` / `stale` / `expired`)
 - Live radar API with filters and session inference
 - A fake-mod harness that simulates independent observers without launching GWYF
+- A real game hook (`UnityLobbyHook` + Harmony bindings) that turns a vanilla GWYF
+  lobby-browser search into signed, queued, batched observations — cross-language
+  signing proven with shared golden fixtures (C# signs, TypeScript verifies)
 
 Not yet built (deliberately): map atlas, course fingerprints, accounts, active scanning, community tags, frontend beyond raw JSON.
 
@@ -67,7 +70,7 @@ curl -s localhost:3000/v1/lobbies/live
 The emit script simulates three lobbies: one corroborated by both observers, one that fades (watch it degrade `active → likely_active → stale → expire`), one single-observer. Observer keys persist in `scripts/.keys/` so restarts keep the same identity.
 
 ```bash
-pnpm test               # 35 tests: protocol, derivation, API chain
+pnpm test               # 36 tests: protocol, derivation, API chain
 pnpm build              # typecheck + compile all packages
 ```
 
@@ -102,12 +105,29 @@ Confidence blends age against 5 minutes, corroboration (capped at 2 observers), 
 
 ## The mod (`mod/`)
 
-BepInEx skeleton with the game sealed behind two hook classes:
+BepInEx plugin with the game sealed behind two hook classes:
 
-- `UnityLobbyHook` — wire the lobby browser results event here
-- `UnityCourseHook` — wire scene load events here
+- `UnityLobbyHook` — observes the vanilla lobby browser via Harmony patches on
+  `SessionBrowserUIController.UpdateSessionInfos` / `EnumerateSessionInfosGameState.RequestSessionInfos`
+  (adapter: `SessionBrowserBindings`, seams documented in `docs/gwyf-hook-inventory.md`)
+- `UnityCourseHook` — scene load events (course observation is still opt-in, see below)
 
-Point `GWYF_REFS` at your folder of BepInEx/UnityEngine/Assembly-CSharp DLLs and `dotnet build`. The identity, queue, observers, and network client compile without the game and mirror the wire protocol 1:1. `ObserverIdentity.Sign` is stubbed (`NotImplementedException`) pending an ed25519 library that fits the game's netstandard2.0/Unity runtime.
+Passive by default: hooks never trigger searches, never mutate results, and never
+block the game. Observations flow through `LobbyObserver` → `ObservationQueue`
+(persisted JSONL, crash-tolerant, bounded, replay-on-startup) → signed batch
+`POST /v1/ingest/batch`. `ObserverIdentity` is a persistent per-installation
+Ed25519 keypair (BouncyCastle, works on the game's runtime); observer id
+derivation matches the TypeScript server byte-for-byte, proven by the shared
+golden fixtures in `scripts/fixtures/` (regenerate with
+`npx tsx scripts/src/fixtures/generate.ts`).
+
+Point `GWYF_REFS` at your folder of BepInEx/UnityEngine/Assembly-CSharp DLLs to
+compile the game-bound layer and `dotnet build`. Everything else (identity,
+queue, observers, network client) builds and tests without the game.
+Without `GWYF_REFS` the plugin layer is excluded and the pipeline runs in
+instrument-only mode (`HOOK UNAVAILABLE`). Course observation is disabled until
+course fingerprints are validated live; deleting the identity file under
+`BepInEx/gwyf-community/` resets the observer identity.
 
 ## Privacy boundary
 

@@ -1,0 +1,5 @@
+{
+  "publicKeyHex": "9f3a4a2a7f3a08d38f0d28315e63638333dd599b12592c6b0d9a50482f9ad555",
+  "privateKeyHex": "76fbacdc258a61fe26d0472cbb8097e4bd61fd53369fdc02a5c19faf4ee31cc8",
+  "note": "TEST-ONLY fixture key - never production"
+}

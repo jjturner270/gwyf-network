@@ -13,4 +13,3 @@ coverage/
 mod/obj/
 mod/test/bin/
 mod/test/obj/
-scripts/fixtures/signing/test-keypair.json

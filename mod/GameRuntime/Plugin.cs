@@ -77,6 +77,12 @@ public sealed class Plugin : BaseUnityPlugin
             {
                 _diagnostics.LastRejectedReason = $"{rejected} of {accepted + duplicates + rejected} rejected by server";
                 Logger.LogWarning(_diagnostics.LastRejectedReason);
+                if (_network.LastRejectedReason is { } reason &&
+                    reason.Contains("clock", StringComparison.OrdinalIgnoreCase))
+                {
+                    _diagnostics.RecordClockRejection(_network.LastRejectedSightingId ?? "");
+                    Logger.LogWarning($"CLOCK: server rejected {_network.LastRejectedSightingId} ({reason})");
+                }
             }
             else
             {
