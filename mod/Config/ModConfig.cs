@@ -31,6 +31,8 @@ public sealed class ModConfig
         if (Environment.GetEnvironmentVariable("GWYF_MAX_LOBBY_AGE_MINUTES") is { Length: > 0 } age &&
             int.TryParse(age, out var minutes))
             config.MaxLobbySightingAgeMinutes = minutes;
+        if (Environment.GetEnvironmentVariable("GWYF_VERBOSE") is { Length: > 0 } verbose)
+            config.VerboseLogging = verbose is "1" or "true";
         return config;
     }
 }

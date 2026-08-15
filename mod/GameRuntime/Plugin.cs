@@ -31,14 +31,7 @@ public sealed class Plugin : BasePlugin
         Log.LogInfo("GWYF Community Network starting");
 
         var log = new GameLog(Log);
-        var envConfig = ModConfig.FromEnvironment();
-        var config = new ModConfig
-        {
-            NetworkEnabled = envConfig.NetworkEnabled,
-            ApiBaseUrl = envConfig.ApiBaseUrl,
-            LobbyObservationEnabled = envConfig.LobbyObservationEnabled,
-            MaxLobbySightingAgeMinutes = envConfig.MaxLobbySightingAgeMinutes,
-        };
+        var config = BindConfig();
 
         // identity ------------------------------------------------------------
         var stateDir = ModPaths.GetStateDirectory(Paths.GameRootPath);
@@ -47,6 +40,7 @@ public sealed class Plugin : BasePlugin
         _diagnostics.ObserverId = _identity.ObserverId;
         _diagnostics.GameBuild = ModVersions.GameBuild ??= GameBuildDetector.Resolve() ?? "";
         Log.LogInfo($"observer identity {_identity.ObserverId} (game build {_diagnostics.GameBuild})");
+        WriteStateFiles(stateDir);
 
         // network + queue -----------------------------------------------------
         _network = new NetworkClient(new Uri(config.ApiBaseUrl), _identity, ModVersions.Client);
@@ -97,7 +91,7 @@ public sealed class Plugin : BasePlugin
 
         // observation sources ------------------------------------------------
         _lobbyHook = new UnityLobbyHook(log, _diagnostics,
-            config.LobbyObservationEnabled ? new SessionBrowserBindings(log, Log, _diagnostics) : null);
+            config.LobbyObservationEnabled ? new SessionBrowserBindings(log, Log, _diagnostics, config.VerboseLogging) : null);
         _lobbyHook.Start();
 
         var observerId = () => _identity.ObserverId;
@@ -150,6 +144,7 @@ public sealed class Plugin : BasePlugin
                 }
                 await _queue.FlushAsync(_network.SendBatchAsync, ct);
                 _diagnostics.PendingUploads = _queue.PendingCount;
+                WriteStateFiles(ModPaths.GetStateDirectory(Paths.GameRootPath));
             }
             catch (OperationCanceledException)
             {
@@ -158,7 +153,44 @@ public sealed class Plugin : BasePlugin
             catch (Exception ex)
             {
                 _diagnostics.LastError = ex.Message;
+                WriteStateFiles(ModPaths.GetStateDirectory(Paths.GameRootPath));
             }
+        }
+    }
+
+    /// <summary>
+    /// BepInEx config file (BepInEx/config/com.gwyf.community.cfg) is the source
+    /// of truth; environment variables remain as overrides for dev/test runs.
+    /// </summary>
+    private ModConfig BindConfig()
+    {
+        var env = ModConfig.FromEnvironment();
+        return new ModConfig
+        {
+            NetworkEnabled = Config.Bind("network", "enabled", env.NetworkEnabled, "Send observations to the community API").Value,
+            ApiBaseUrl = Config.Bind("network", "apiBaseUrl", env.ApiBaseUrl, "Community API base URL").Value,
+            LobbyObservationEnabled = Config.Bind("observation", "lobbyEnabled", env.LobbyObservationEnabled, "Observe the vanilla public lobby browser").Value,
+            CourseObservationEnabled = Config.Bind("observation", "courseEnabled", env.CourseObservationEnabled, "Observe courses (opt-in until fingerprints are validated)").Value,
+            ActiveRadarEnabled = Config.Bind("observation", "activeRadar", env.ActiveRadarEnabled, "Proactively scan lobbies (experimental; keep false)").Value,
+            MaxPendingItems = Config.Bind("queue", "maxPendingItems", env.MaxPendingItems, "Bounded queue depth").Value,
+            MaxLobbySightingAgeMinutes = Config.Bind("queue", "maxSightingAgeMinutes", env.MaxLobbySightingAgeMinutes, "Drop queued sightings older than this").Value,
+            BatchSize = Config.Bind("queue", "batchSize", env.BatchSize, "Sightings per signed batch").Value,
+            FlushIntervalSeconds = Config.Bind("queue", "flushIntervalSeconds", env.FlushIntervalSeconds, "Seconds between flush attempts").Value,
+            VerboseLogging = Config.Bind("diagnostics", "verboseLogging", env.VerboseLogging, "Per-session debug dumps (noisy)").Value,
+        };
+    }
+
+    /// <summary>Support surface: observer id + rendered diagnostics as files.</summary>
+    private void WriteStateFiles(string stateDir)
+    {
+        try
+        {
+            File.WriteAllText(Path.Combine(stateDir, "observer-id.txt"), _identity.ObserverId);
+            File.WriteAllText(Path.Combine(stateDir, "diagnostics.txt"), _diagnostics.Render());
+        }
+        catch (Exception)
+        {
+            // writing support files must never break the game
         }
     }
 
@@ -167,6 +199,14 @@ public sealed class Plugin : BasePlugin
         _shutdown.Cancel();
         _lobbyHook.Stop();
         _queue.Persist();
+        try
+        {
+            File.WriteAllText(Path.Combine(ModPaths.GetStateDirectory(Paths.GameRootPath), "diagnostics.txt"), _diagnostics.Render());
+        }
+        catch (Exception)
+        {
+            // best effort
+        }
         Log.LogInfo("GWYF Community Network stopped");
     }
 }

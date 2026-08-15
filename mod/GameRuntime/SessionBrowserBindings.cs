@@ -36,12 +36,12 @@ public sealed class SessionBrowserBindings : ILobbyHookBindings
     /// <summary>Per-session detail dumps; off by default so menu churn stays quiet.</summary>
     public bool Verbose { get; }
 
-    public SessionBrowserBindings(IModLog log, ManualLogSource bepInExLog, DiagnosticsPanel diagnostics)
+    public SessionBrowserBindings(IModLog log, ManualLogSource bepInExLog, DiagnosticsPanel diagnostics, bool verbose = false)
     {
         _log = log;
         _bepInExLog = bepInExLog;
         _diagnostics = diagnostics;
-        Verbose = Environment.GetEnvironmentVariable("GWYF_VERBOSE") is { Length: > 0 } v && v is "1" or "true";
+        Verbose = verbose;
     }
 
     public void Attach(ILobbyHookSink sink)

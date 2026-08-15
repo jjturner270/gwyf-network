@@ -11,6 +11,14 @@
     <Version>0.2.0</Version>
   </PropertyGroup>
 
+  <!-- Reproducible release builds: same inputs → same DLL bytes. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <DebugType>none</DebugType>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
   <!--
     Game-bound code (BepInEx plugin, Harmony patches against the actual game
     types) compiles only when GWYF_REFS points at the game's interop references
