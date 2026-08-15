@@ -17,6 +17,8 @@
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
     <DebugType>none</DebugType>
     <Optimize>true</Optimize>
+    <!-- Ship BouncyCastle beside the plugin DLL (BepInEx loads it at runtime). -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
   <!--

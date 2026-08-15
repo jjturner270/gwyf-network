@@ -64,7 +64,7 @@ $bc = Join-Path $bin "BouncyCastle.Cryptography.dll"
 if (Test-Path -LiteralPath $bc) {
     Copy-Item -LiteralPath $bc -Destination (Join-Path $stage "BouncyCastle.Cryptography.dll") -Force
 } else {
-    Write-Warning "BouncyCastle.Cryptography.dll not in build output; plugin will fail to load without it."
+    throw "BouncyCastle.Cryptography.dll missing from build output; the plugin cannot load without it. Build with -p:CopyLocalLockFileAssemblies=true."
 }
 
 @"
