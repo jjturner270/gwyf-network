@@ -348,13 +348,71 @@ according to the server freshness rules after observations stop.
 - [ ] `index.html?api=http://127.0.0.1:3000` overrides the default base URL
 - [ ] No code changes required → web radar slice accepted
 
+## Public end-to-end acceptance (v0.3.0 deploy)
+
+The milestone: **download one EXE on another Windows machine, install it, launch
+GWYF, open the lobby browser, and watch that lobby appear on the public website
+— without touching a terminal or a config file.** Once somebody other than you
+can do that, v0.3.0 stops being "installer exists" and becomes "Community
+Observer actually works".
+
+The path under test:
+
+```text
+GWYF → mod → public HTTPS API → SQLite → /v1/lobbies/live → public radar
+```
+
+Both public services are on Render (`docs/deploy-runbook.md`). The installer is
+baked with the **actual verified API origin** — `build-setup.ps1` refuses
+loopback (without `-AllowLoopback`), http release bakes, and the documented
+placeholder hosts, so the shipped exe can only contain the real origin.
+
+Record with the run:
+
+| Item | Value |
+| --- | --- |
+| Date / game build / mod version |  |
+| API origin (baked + served) |  |
+| Radar origin |  |
+| `GWYF-Community-Setup-0.3.0.exe` SHA-256 |  |
+| Lobby observed (name, map, mode) |  |
+| `activeObservers` seen on `/v1/lobbies/live` |  |
+| Production `/v1/client/config` (save verbatim) |  |
+| Baked origin == served origin on the contract |  |
+| Result | PASS / FAIL (reason) |
+
+Evidence checklist:
+
+- [ ] API + radar live (`/healthz` ok; radar serves the page with the baked `GWYF_API_BASE_URL`)
+- [ ] **Config contract from the public origin**, saved with the run — must contain
+      exactly `protocolVersion`, `configVersion`, `minimumClientVersion`,
+      `latestClientVersion`, `supportedGameBuilds`, `ingestEnabled`
+- [ ] Build the exe against the verified origin, **no `-AllowLoopback`**:
+      `pwsh scripts/build-setup.ps1 -IngestUrl https://<actual-verified-origin>` →
+      SHA-256 + `Selftest PASS` recorded
+- [ ] Fresh install from the artifact on the game machine → **no config edits**;
+      `com.gwyf.community.cfg` / logger shows the baked URL, not loopback
+- [ ] Launch GWYF → gate resolves from the public origin (`STATUS  WORKING`),
+      hook attaches, observation runs
+- [ ] Open the vanilla public lobby browser → the real lobby appears on the
+      **public radar within one polling interval** (`LIVE`, `N ACTIVE OBSERVERS`);
+      capture `/v1/lobbies/live` during the run showing the lobby + `activeObservers ≥ 1`
+- [ ] Stop observations → lobby decays `likely_active → stale` then **disappears**
+      from `/v1/lobbies/live` and the radar returns to the empty state
+- [ ] **Cold boot**: redeploy/restart the API, then the first client fetches
+      `/v1/client/config` and ingests successfully (script-equivalent:
+      `pnpm build:smoke` boots the compiled server cold on a fresh DB and on the
+      same DB in a new process)
+- [ ] The installer's baked origin and the served contract agree — one truth
+
 ## Release
 
 ```text
-git tag -a v0.3.0 -m "Zero-config compatibility gate"
+git tag -a v0.3.0 -m "Community Observer: compatibility gate + public live radar"
 git push origin v0.3.0
 ```
 
 Milestone: every client resolves an authoritative compatibility contract at
 launch, observes only what the server accepts, and never conflates a gate block
-with a transient outage.
+with a transient outage — and a stranger with an EXE, a public lobby, and a
+website can watch the observer network produce a shared view of the game.

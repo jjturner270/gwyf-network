@@ -330,8 +330,10 @@ Public by default: lobby ids, names, player counts, maps, timestamps, aggregate 
 
 ## Next slices
 
-1. Deploy the API and the static `apps/web` radar page (public URL) and bake that
-   origin into the installer so a stranger's page shows lobbies without config
+1. Stand the deployment up for real: create the two Render services from
+   `render.yaml`, point DNS at live `api.`/`lobbies.` origins, and run the
+   public end-to-end acceptance (installer → game → public radar) on a game
+   machine — checklist in `docs/manual-gwyf-hook-tests.md`
 2. Course fingerprints (`SceneFingerprint` needs a real normalized scene snapshot pipeline)
 3. Map atlas + version lineage
 4. Community layer (tags, creator claims) — only after the observation network produces useful data on its own
