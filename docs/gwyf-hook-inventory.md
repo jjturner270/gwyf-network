@@ -18,11 +18,13 @@ build before any production release (see `manual-gwyf-hook-tests.md`).
 | Metadata inventory | 72 images, 12,876 types, 88,627 methods, 57,204 fields | `scripts/tools/il2cpp-metadata-dump.py` |
 | Game code image | `Assembly-CSharp.dll` (root namespace) + `Assembly-CSharp-firstpass.dll` | metadata images |
 
-> Windows builds observed in the wild are Mono and ship a *different* lobby-browser
+> Older Windows builds observed in the wild are Mono and ship a *different* lobby-browser
 > implementation (`PublicLobbyListUI` / `PublicLobbyListEntry`, seen in the third-party
-> `confusing-LobbyBrowser` Thunderstore mod). This inventory is authoritative for the
-> **macOS IL2CPP build 256**. The Windows Mono names are listed at the bottom as
-> unverified reference only.
+> `confusing-LobbyBrowser` Thunderstore mod). The current Windows Steam build (2026) is
+> **IL2CPP** with the same Photon-based browser; the hook compiled clean against its
+> BepInEx interop references (`BepInEx/interop/Assembly-CSharp.dll`). This inventory is
+> authoritative for IL2CPP builds 256+ (macOS and current Windows). The Windows Mono
+> names are listed at the bottom as unverified reference only.
 
 ## Lobby discovery flow (build 256, from type graph)
 
@@ -159,7 +161,8 @@ exception ever propagates into vanilla flow. No polling, no UI scraping, no muta
 | Build | Runtime | Public browser backend | Hook seam | Status |
 | --- | --- | --- | --- | --- |
 | macOS 256 (installed) | IL2CPP | Photon SQL lobby | `SessionInfo` / `SessionBrowserUIController` | verified in metadata, pending in-game proof |
-| Windows (current) | Mono | Steam lobbies (`PublicLobbyListUI` / `PublicLobbyListEntry`) | third-party evidence only | **unverified — do not code against without a running build** |
+| Windows current (Steam, 2026) | **IL2CPP** (BepInEx.Unity.IL2CPP) | Photon SQL lobby | `SessionInfo` / `SessionBrowserUIController` | **compiles clean against interop refs** (BepInEx 6 BE + Il2CppInterop); runtime proof pending |
+| Windows (older) | Mono | Steam lobbies (`PublicLobbyListUI` / `PublicLobbyListEntry`) | third-party evidence only | **unverified — do not code against without a running build** |
 
 ## Repro: regenerate this inventory
 

@@ -29,11 +29,6 @@ public sealed class SessionBrowserBindings : ILobbyHookBindings
     private readonly ManualLogSource _bepInExLog;
     private ILobbyHookSink? _sink;
 
-    /// <summary>Hard cap on entries we will enumerate from a list object.</summary>
-    private const int MaxEnumerated = 256;
-    /// <summary>Above this the collection is treated as juggernaut-marshalled and suspicious.</summary>
-    private const int JuggernautThreshold = 10_000;
-
     public string AdapterName => "gwyf-lobby-hook-v1";
     public bool IsAttached => _sink is not null;
 
@@ -75,7 +70,6 @@ public sealed class SessionBrowserBindings : ILobbyHookBindings
 internal static class PluginPatches
 {
     private static SessionBrowserBindings? _owner;
-    private static int _searchStartedPending;
 
     internal static void Install(SessionBrowserBindings owner, IModLog log)
     {
@@ -146,6 +140,11 @@ internal static class PluginPatches
 /// <summary>Reflection on the game types, isolated so a single wrong name degrades cleanly.</summary>
 internal static class PluginReflection
 {
+    /// <summary>Hard cap on entries we will enumerate from a list object.</summary>
+    private const int MaxEnumerated = 256;
+    /// <summary>Above this the collection is treated as juggernaut-marshalled and suspicious.</summary>
+    private const int JuggernautThreshold = 10_000;
+
     internal static Il2CppSystem.Collections.Generic.List<SessionInfoUIController> GetControllers(
         SessionBrowserUIController browser) => browser.m_controllers;
 
@@ -229,7 +228,7 @@ internal static class PluginReflection
         {
             ok = false;
             owner.Diagnostics.RecordHookError("sessionInfo", ex);
-            return default;
+            return new LobbySnapshot();
         }
     }
 }

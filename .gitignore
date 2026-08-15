@@ -9,7 +9,7 @@ data/
 .env.local
 .DS_Store
 coverage/
-.pnpm-store/mod/bin/
+mod/bin/
 mod/obj/
 mod/test/bin/
 mod/test/obj/

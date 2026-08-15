@@ -1,4 +1,5 @@
 using BepInEx;
+using BepInEx.Unity.IL2CPP;
 using GwyfCommunity.Config;
 using GwyfCommunity.Diagnostics;
 using GwyfCommunity.GameRuntime;
@@ -14,7 +15,7 @@ namespace GwyfCommunity;
 [BepInPlugin("com.gwyf.community", "GWYF Community Network", "0.2.0")]
 [BepInProcess("Golf With Your Friends.exe")]
 [BepInProcess("Golf With Your Friends")]
-public sealed class Plugin : BaseUnityPlugin
+public sealed class Plugin : BasePlugin
 {
     private ObserverIdentity _identity = null!;
     private DiagnosticsPanel _diagnostics = new();
@@ -22,15 +23,14 @@ public sealed class Plugin : BaseUnityPlugin
     private NetworkClient _network = null!;
     private UnityLobbyHook _lobbyHook = null!;
     private LobbyObserver _lobbyObserver = null!;
-    private CourseObserver _courseObserver = null!;
     private CancellationTokenSource _shutdown = new();
     private Task _flushWorker = Task.CompletedTask;
 
-    private void Awake()
+    public override void Load()
     {
-        Logger.LogInfo("GWYF Community Network starting");
+        Log.LogInfo("GWYF Community Network starting");
 
-        var log = new GameLog(Logger);
+        var log = new GameLog(Log);
         var envConfig = ModConfig.FromEnvironment();
         var config = new ModConfig
         {
@@ -45,8 +45,8 @@ public sealed class Plugin : BaseUnityPlugin
         _identity = new ObserverIdentity(Path.Combine(stateDir, "observer_identity.json"));
         _identity.LoadOrCreate();
         _diagnostics.ObserverId = _identity.ObserverId;
-        _diagnostics.GameBuild = ModVersions.GameBuild ??= GameBuildDetector.Resolve();
-        Logger.LogInfo($"observer identity {_identity.ObserverId} (game build {_diagnostics.GameBuild})");
+        _diagnostics.GameBuild = ModVersions.GameBuild ??= GameBuildDetector.Resolve() ?? "";
+        Log.LogInfo($"observer identity {_identity.ObserverId} (game build {_diagnostics.GameBuild})");
 
         // network + queue -----------------------------------------------------
         _network = new NetworkClient(new Uri(config.ApiBaseUrl), _identity, ModVersions.Client);
@@ -62,7 +62,7 @@ public sealed class Plugin : BaseUnityPlugin
             _diagnostics.LastError = reason;
             _diagnostics.ServiceOnline = false;
             _diagnostics.PendingUploads = _queue.PendingCount;
-            Logger.LogWarning($"observation submission failed: {reason}");
+            Log.LogWarning($"observation submission failed: {reason}");
         };
         _queue.SubmissionSucceeded += (accepted, duplicates, rejected) =>
         {
@@ -76,12 +76,12 @@ public sealed class Plugin : BaseUnityPlugin
             if (rejected > 0)
             {
                 _diagnostics.LastRejectedReason = $"{rejected} of {accepted + duplicates + rejected} rejected by server";
-                Logger.LogWarning(_diagnostics.LastRejectedReason);
+                Log.LogWarning(_diagnostics.LastRejectedReason);
                 if (_network.LastRejectedReason is { } reason &&
                     reason.Contains("clock", StringComparison.OrdinalIgnoreCase))
                 {
                     _diagnostics.RecordClockRejection(_network.LastRejectedSightingId ?? "");
-                    Logger.LogWarning($"CLOCK: server rejected {_network.LastRejectedSightingId} ({reason})");
+                    Log.LogWarning($"CLOCK: server rejected {_network.LastRejectedSightingId} ({reason})");
                 }
             }
             else
@@ -92,7 +92,7 @@ public sealed class Plugin : BaseUnityPlugin
 
         // observation sources ------------------------------------------------
         _lobbyHook = new UnityLobbyHook(log, _diagnostics,
-            config.LobbyObservationEnabled ? new SessionBrowserBindings(log, Logger, _diagnostics) : null);
+            config.LobbyObservationEnabled ? new SessionBrowserBindings(log, Log, _diagnostics) : null);
         _lobbyHook.Start();
 
         var observerId = () => _identity.ObserverId;
@@ -108,8 +108,7 @@ public sealed class Plugin : BaseUnityPlugin
             observerId);
 
         // course observation remains opt-in until fingerprints are validated live
-        _courseObserver = null; // CourseObserver wiring arrives with REAL GAME HOOK slice
-        Logger.LogInfo($"course observation disabled (real game hook pending)");
+        Log.LogInfo("course observation disabled (real game hook pending)");
 
         // flush worker --------------------------------------------------------
         _flushWorker = Task.Run(() => FlushWorkerAsync(config, _shutdown.Token));
@@ -143,6 +142,6 @@ public sealed class Plugin : BaseUnityPlugin
         _shutdown.Cancel();
         _lobbyHook.Stop();
         _queue.Persist();
-        Logger.LogInfo("GWYF Community Network stopped");
+        Log.LogInfo("GWYF Community Network stopped");
     }
 }
