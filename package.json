@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "pnpm --filter @gwyf/api dev",
     "build": "pnpm -r build",
+    "build:smoke": "pnpm build && tsx scripts/src/build-smoke.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "dev:emit-lobby": "pnpm --filter @gwyf/scripts emit-lobby",

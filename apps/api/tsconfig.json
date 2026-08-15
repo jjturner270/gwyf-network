@@ -2,7 +2,12 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": "./src"
+    "rootDir": "./src",
+    "baseUrl": ".",
+    "paths": {
+      "@gwyf/db": ["../../packages/db/src/index.ts"],
+      "@gwyf/protocol": ["../../packages/protocol/src/index.ts"]
+    }
   },
   "include": ["src"]
 }

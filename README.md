@@ -91,8 +91,49 @@ The emit script simulates three lobbies: one corroborated by both observers, one
 
 ```bash
 pnpm test               # 83 tests: protocol, derivation, reconciliation, API chain, web page
-pnpm build              # typecheck + compile all packages
+pnpm build              # typecheck + compile all packages to dist
+pnpm build:smoke        # build, then boot the compiled server under plain Node
+                        #   -> config contract + cold-boot signed ingest, twice
+                        #      (fresh database, then the same database in a new process)
 ```
+
+### Running the compiled server (plain Node)
+
+`pnpm build` puts real JS artifacts in `packages/db/dist`, `packages/protocol/dist`,
+and `apps/api/dist/server.js`; the packages' `main`/`exports` point at `dist`, so
+after a build the server runs under plain Node with no tsx:
+
+```bash
+pnpm build
+DATABASE_PATH=/srv/gwyf/data/gwyf.db HOST=0.0.0.0 PORT=3000 node apps/api/dist/server.js
+```
+
+`pnpm build:smoke` is the regression guard for this: it spawns
+`node apps/api/dist/server.js` on a scratch database, asserts the full
+`/v1/client/config` contract, registers an observer, posts a signed lobby
+sighting, and confirms it appears on `/v1/lobbies/live` with `activeObservers`
+— then restarts the server against the same database and repeats. That is also
+the **cold boot** scenario from the release run: a fresh process where the first
+client fetches config and ingests successfully.
+
+Dev (`pnpm dev` / `pnpm test`) keeps resolving `@gwyf/db` and `@gwyf/protocol`
+from source via `tsx` tsconfig paths and the vitest alias, so editing them needs
+no build.
+
+Runtime configuration (server), all environment-driven:
+
+| Env | Default | Meaning |
+| --- | --- | --- |
+| `PORT` | `3000` | listen port |
+| `HOST` | `0.0.0.0` | listen host |
+| `DATABASE_PATH` | `data/gwyf.db` | persistent SQLite (WAL) location |
+| `INGEST_RATE_PER_MINUTE` | `240` | per-observer ingest budget |
+| `INGEST_CLOCK_SKEW_MS` | `60000` | accepted observedAt skew |
+| `CLIENT_MIN_VERSION` | `0.3.0` | minimum client the gate accepts |
+| `CLIENT_LATEST_VERSION` | `0.3.0` | newest client (shown as a notice when newer) |
+| `CLIENT_SUPPORTED_GAME_BUILDS` | `303` | comma-separated build ids |
+| `CLIENT_INGEST_ENABLED` | `true` | master ingest switch (`false` → gate blocks) |
+| `CLIENT_CONFIG_VERSION` | `1` | contract generation |
 
 ## API
 

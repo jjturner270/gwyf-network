@@ -22,5 +22,7 @@ process.on("SIGTERM", () => {
 });
 
 await app.listen({ port: config.port, host: config.host });
-console.log(`[api] listening on http://${config.host}:${config.port}`);
+const bound = app.server.address();
+const boundPort = typeof bound !== "string" && bound !== null ? bound.port : config.port;
+console.log(`[api] listening on http://${config.host}:${boundPort}`);
 console.log(`[api] database at ${config.databasePath}`);
