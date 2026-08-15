@@ -10,8 +10,8 @@ Two services on Render, reproduced from `render.yaml` (a Blueprint):
 These `.dev` names are **placeholders**, not production truth. Until real DNS
 points at the Render services, the live origin is whatever Render assigns
 (e.g. `https://gwyf-api.onrender.com`). The installer is baked with the **actual
-verified service URL**, never the placeholder — `build-setup.ps1` now refuses it
-(`-AllowPlaceholder` is for nothing; see `scripts/build-setup.ps1`).
+verified service URL**, never the placeholder — `build-setup.ps1` refuses it,
+with no bypass (see `scripts/build-setup.ps1`).
 
 ## Rules that are not negotiable
 

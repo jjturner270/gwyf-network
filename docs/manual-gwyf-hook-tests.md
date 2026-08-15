@@ -241,7 +241,7 @@ download double-click to contributing without talking to anyone?
 
 ```pwsh
 $env:GWYF_REFS = "path/to/BepInEx/interop"
-pwsh scripts/build-setup.ps1 -IngestUrl https://api.gwyf-community.app   # real release
+pwsh scripts/build-setup.ps1 -IngestUrl https://<actual-verified-origin>  # real release
 pwsh scripts/build-setup.ps1 -IngestUrl http://127.0.0.1:3000 -AllowLoopback  # dev build
 # publishing: record the printed SHA-256 with the artifact
 dist/GWYF-Community-Setup-0.3.0.exe --selftest

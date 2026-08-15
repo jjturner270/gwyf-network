@@ -14,10 +14,11 @@
     5. Emit dist/GWYF-Community-Setup-<version>.exe + SHA-256, run the headless
        selftest against the artifact.
 
-  Endpoint guardrail: a release build must NOT bake a loopback endpoint. Pass
-  -IngestUrl https://… for real distributions; pass -AllowLoopback only for
-  local dev/test builds. Shipped builds point at the real API or the pipeline
-  refuses to build them.
+  Endpoint guardrails: a release build must NOT bake a loopback endpoint or a
+  documented placeholder host. Pass -IngestUrl https://… with the ACTUAL verified
+  origin for real distributions; pass -AllowLoopback only for local dev/test
+  builds. Release bakes use https only. Shipped builds point at the real API or
+  the pipeline refuses to build them.
 
   The user-facing promise is: double-click, press Install, press Launch.
   Nothing else.
@@ -40,16 +41,26 @@ if ([string]::IsNullOrWhiteSpace($GwyfRefs) -or -not (Test-Path -LiteralPath $Gw
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $setupProject = Join-Path $repoRoot "installer\GWYFCommunityNetwork.Setup\GWYFCommunityNetwork.Setup.csproj"
 
-# ---- endpoint guardrail: never ship a loopback bake by accident -------------
+# ---- endpoint guardrails: never ship a loopback / placeholder / http bake -----
 $endpoint = $IngestUrl
 $ep = $null
 if ([Uri]::TryCreate($endpoint, [UriKind]::Absolute, [ref]$ep)) {
     if ($ep.IsLoopback -and -not $AllowLoopback) {
         throw "refusing to bake loopback endpoint '$endpoint' into a $Version build. " +
-              "Pass -IngestUrl https://api.… for a real release, or -AllowLoopback for a local dev build."
+              "Pass -IngestUrl https://<actual-verified-origin> for a real release, or -AllowLoopback for a local dev build."
+    }
+    if ($ep.Scheme -eq "http" -and -not $ep.IsLoopback -and -not $AllowLoopback) {
+        throw "release builds must use https (got http for '$endpoint'); pass -AllowLoopback only for local dev builds."
     }
     if ($ep.Scheme -notin @("http", "https")) {
         throw "unsupported endpoint scheme '$($ep.Scheme)' in '$endpoint' (http/https only)."
+    }
+    $hostForbidden = "gwyf-community.dev", "gwyf-community.app"
+    if (($hostForbidden -contains $ep.Host) -or
+        ($ep.Host -like "*.gwyf-community.dev") -or
+        ($ep.Host -like "*.gwyf-community.app")) {
+        throw "refusing placeholder host '$($ep.Host)': '$endpoint' is the documented placeholder, not the deployed " +
+              "API. Bake the actual verified origin (Render service URL or its custom DNS domain). There is no bypass."
     }
 } else {
     throw "IngestUrl is not a valid absolute URL: '$endpoint'"

@@ -289,13 +289,15 @@ double-clicks — no unzipping, no terminal, no training:
 
 ```pwsh
 $env:GWYF_REFS = "path/to/BepInEx/interop"
-pwsh scripts/build-setup.ps1 -IngestUrl https://api.gwyf-community.app
+pwsh scripts/build-setup.ps1 -IngestUrl https://<actual-verified-origin>
 #     -> dist/GWYF-Community-Setup-<version>.exe
 ```
 
-A release build **must** bake a real ingest endpoint: the pipeline fails a
+A release build **must** bake the real ingest endpoint: the pipeline fails a
 build whose baked endpoint is loopback unless `-AllowLoopback` is passed (dev
-builds only), so a `127.0.0.1` build can never ship by accident. The baked
+builds only), fails http bakes unless loopback, and refuses the documented
+`gwyf-community.dev` / `gwyf-community.app` placeholder hosts unconditionally —
+so the actual verified origin only, never the placeholder, can ship. The baked
 endpoint is compiled into the exe and pre-seeds the mod config, so a normal
 user never opens a config file. Dev/test iterations use
 `-IngestUrl http://127.0.0.1:3000 -AllowLoopback`.
