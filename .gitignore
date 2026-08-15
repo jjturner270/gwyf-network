@@ -13,3 +13,8 @@ mod/bin/
 mod/obj/
 mod/test/bin/
 mod/test/obj/
+installer/**/bin/
+installer/**/obj/
+installer/GWYFCommunityNetwork.Setup/Assets/
+installer/GWYFCommunityNetwork.Setup/Generated/
+

@@ -231,6 +231,57 @@ Checklist (covers the earlier quiet-logs smoke plus artifact and persistence):
 - [ ] Restart: same observer id, same config values, clean startup
 - [ ] No code changes required → tag `v0.2.0`
 
+## Setup exe smoke (release acceptance — the "dude in the Discord" test)
+
+Test **the one-click artifact** (`dist/GWYF-Community-Setup-<version>.exe`), not
+the dev tree at all. The question being answered: can a stranger go from a
+download double-click to contributing without talking to anyone?
+
+**Build + non-destructive verification (no game touched):**
+
+```pwsh
+$env:GWYF_REFS = "path/to/BepInEx/interop"
+pwsh scripts/build-setup.ps1 -IngestUrl https://api.gwyf-community.app   # real release
+pwsh scripts/build-setup.ps1 -IngestUrl http://127.0.0.1:3000 -AllowLoopback  # dev build
+# publishing: record the printed SHA-256 with the artifact
+dist/GWYF-Community-Setup-0.3.0.exe --selftest
+#    PASS embedded mod zip present
+#    PASS mod zip contains plugin dll / BouncyCastle / entries safe
+#    PASS steam discovery      -> real install found or "not found, choose folder" path
+#    PASS bepinex probe        -> be.785 Good / UpgradeNeeded / Absent
+#    PASS mod presence
+dist/GWYF-Community-Setup-0.3.0.exe --selftest-install (Join-Path $env:TEMP 'gwyf-sandbox')
+#    full install->uninstall cycle in a throwaway dir: BE download+extract,
+#    plugin+config+marker deploy, uninstall, BE removal — game install untouched
+```
+
+**Interactive run (on a clean machine, or one with GWYF + no BepInEx):**
+
+| Evidence item | Value |
+| --- | --- |
+| Setup exe path / SHA-256 |  |
+| Game found automatically? |  |
+| BepInEx present or installed? |  |
+| `Launch Game` worked |  |
+| Observer id on first launch |  |
+| Result | PASS / FAIL (reason) |
+
+Checklist:
+
+- [ ] Double-click → finds the game without asking; `choose game folder` never shown first
+- [ ] Install button only, then green status: found / mod installed / ready to launch
+- [ ] Fresh install: BepInEx be.785 present at game root, plugin + BouncyCastle in
+      `BepInEx/plugins/GWYFCommunityNetwork/`
+- [ ] Config seeded only once (`network.apiBaseUrl`, observation enabled);
+      re-running/`Repair` never clobbers an edited config
+- [ ] Existing be.785 install → no BepInEx download (probe goes straight to deploy)
+- [ ] `Launch Game` starts GWYF and the plugin logs a clean startup
+- [ ] Uninstall removes plugin/config/state; game and other plugins untouched;
+      offers BepInEx removal only when it installed it and nothing else remains
+- [ ] On a machine with no game found → explicit "choose game folder" fallback,
+      no crash
+- [ ] No code changes required → installer slice accepted
+
 ## Release
 
 ```text

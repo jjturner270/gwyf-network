@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <AssemblyName>GWYF-Community-Setup</AssemblyName>
+    <RootNamespace>GwyfCommunity.Setup</RootNamespace>
+    <Version>0.3.0</Version>
+    <Product>GWYF Community Network Setup</Product>
+    <Description>One-click installer for the GWYF Community Network observer</Description>
+  </PropertyGroup>
+
+  <!-- net48 needs the reference assemblies; build-time only, never deployed. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- System.Net.Http and System.IO.Compression are not in the net48 default set. -->
+  <ItemGroup>
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="System.Windows.Forms" />
+  </ItemGroup>
+
+  <!--
+    The mod release ZIP (BepInEx/ layout) is embedded into the setup exe so the
+    installer is a single self-contained file. scripts/build-setup.ps1 copies
+    dist/GWYFCommunityNetwork-<modVersion>.zip here before building; a build
+    without it is a build error, not a broken installer.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\mod-release.zip">
+      <LogicalName>mod-release.zip</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+</Project>

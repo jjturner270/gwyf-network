@@ -208,6 +208,46 @@ README), and zips it. The DLL is reproducible (same refs + same sources → same
 bytes); the ZIP container itself is not normalized (timestamps/order), so
 successive ZIP hashes may differ even though the build and layout are stable.
 
+### One-click installer (`installer/`)
+
+`GWYF-Community-Setup-<version>.exe` is the distribution artifact a stranger
+double-clicks — no unzipping, no terminal, no training:
+
+```pwsh
+$env:GWYF_REFS = "path/to/BepInEx/interop"
+pwsh scripts/build-setup.ps1 -IngestUrl https://api.gwyf-community.app
+#     -> dist/GWYF-Community-Setup-<version>.exe
+```
+
+A release build **must** bake a real ingest endpoint: the pipeline fails a
+build whose baked endpoint is loopback unless `-AllowLoopback` is passed (dev
+builds only), so a `127.0.0.1` build can never ship by accident. The baked
+endpoint is compiled into the exe and pre-seeds the mod config, so a normal
+user never opens a config file. Dev/test iterations use
+`-IngestUrl http://127.0.0.1:3000 -AllowLoopback`.
+
+The setup exe is a self-contained net48 WinForms app (runs on any Windows
+10/11, nothing to install). It embeds the mod release zip, finds the Golf With
+Your Friends install via Steam registry + `libraryfolders.vdf` (manual
+"choose game folder" only as a fallback), detects or installs BepInEx 6
+IL2CPP be.785 (pinned, verified against game build 303, SHA-256-verified
+before it is ever extracted), deploys the plugin, seeds the config file, and
+shows Install / Repair / Launch Game / Uninstall.
+BepInEx 5 or unknown-version installs are upgraded by overlaying be.785.
+Uninstall removes the plugin/config/identity and offers to remove BepInEx only
+when this setup exe installed it and no other plugins remain.
+
+Non-destructive verification of the artifact:
+
+```text
+GWYF-Community-Setup.exe --selftest              headless discovery + package probe
+GWYF-Community-Setup.exe --selftest-install DIR  full install/uninstall cycle in a sandbox
+```
+
+The installer owns mutation of the game installation; the mod only observes the
+game. Upgrades are a new installer run (`Repair`), never self-modification
+inside the game process.
+
 ## Privacy boundary
 
 Public by default: lobby ids, names, player counts, maps, timestamps, aggregate activity, fingerprints, confidence. Never public: durable Steam ids, join history, relationships, IPs, hardware fingerprints, behavioral profiles. Observer identities are per-installation keypairs — a human never attaches identity unless they choose to.
