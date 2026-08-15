@@ -135,6 +135,28 @@ Runtime configuration (server), all environment-driven:
 | `CLIENT_INGEST_ENABLED` | `true` | master ingest switch (`false` → gate blocks) |
 | `CLIENT_CONFIG_VERSION` | `1` | contract generation |
 
+## Deploy
+
+Two Render services (blueprint in `render.yaml`, full runbook in `docs/deploy-runbook.md`):
+
+| Service | Origin (placeholder until live) |
+| --- | --- |
+| `gwyf-api` (Docker: Node + SQLite) | `https://api.gwyf-community.dev` |
+| `gwyf-radar` (static `apps/web`) | `https://lobbies.gwyf-community.dev` |
+
+- Build inside the image: `pnpm install --frozen-lockfile && pnpm build`, then
+  plain `node apps/api/dist/server.js` (the artifact `pnpm build:smoke` guards).
+- SQLite lives on a persistent disk at `/data/gwyf.db`. **Exactly one API
+  instance** while on SQLite — a local volume is single-writer. Growing past one
+  instance is a future DB-architecture decision, not a scaling knob.
+- Compatibility contract, ports, and the DB path are all environment-driven
+  (`HOST`, `DATABASE_PATH`, `CLIENT_*`); the radar's `API_BASE_URL` is baked at
+  static-build time by `scripts/render-bake-config.mjs`.
+- Treat `api.gwyf-community.dev` / `lobbies.gwyf-community.dev` as placeholders.
+  DNS is pointed at the live Render URLs during deployment; the installer is
+  baked with the **actual verified origin** — `build-setup.ps1` refuses the
+  placeholder and loopback so a bad endpoint can't ship by accident.
+
 ## API
 
 | Method | Path | Notes |

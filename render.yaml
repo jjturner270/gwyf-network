@@ -1,0 +1,50 @@
+# Render blueprint for the GWYF Community observer network.
+#
+# Deliberately ONE API instance: SQLite on a persistent disk is a single-writer
+# architecture. Do not scale gwyf-api (no replicas, no autoscaling). Growing out
+# of one instance is a future DB-architecture decision, not a knob to turn here.
+#
+# The origins below are PLACEHOLDERS until real DNS points at this deployment.
+# The installer must be baked with the ACTUAL verified service domain once it
+# exists (build-setup.ps1 refuses the placeholder host). See docs/deploy-runbook.md.
+services:
+  - type: web
+    name: gwyf-api
+    runtime: docker
+    plan: starter
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATABASE_PATH
+        value: /data/gwyf.db
+      - key: NODE_ENV
+        value: production
+      - key: CLIENT_MIN_VERSION
+        value: "0.3.0"
+      - key: CLIENT_LATEST_VERSION
+        value: "0.3.0"
+      - key: CLIENT_SUPPORTED_GAME_BUILDS
+        value: "303"
+      - key: CLIENT_INGEST_ENABLED
+        value: "true"
+      - key: CLIENT_CONFIG_VERSION
+        value: "1"
+    disk:
+      name: gwyf-data
+      mountPath: /data
+      sizeGB: 1
+
+  - type: static
+    name: gwyf-radar
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    buildCommand: node scripts/render-bake-config.mjs
+    publishPath: apps/web
+    envVars:
+      - key: API_BASE_URL
+        value: https://api.gwyf-community.dev
