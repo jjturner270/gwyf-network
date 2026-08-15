@@ -32,10 +32,15 @@ export function withinClockSkew(observedAtMs: number, receivedAt: number, skewMs
   return observedAtMs <= receivedAt + skewMs;
 }
 
+export function withinMaxAge(observedAtMs: number, receivedAt: number, maxAgeMs: number): boolean {
+  return observedAtMs >= receivedAt - maxAgeMs;
+}
+
 export class IngestService {
   constructor(
     private db: GwyfDb,
     private clockSkewMs: number,
+    private maxAgeMs: number,
   ) {}
 
   async appendMany(
@@ -53,6 +58,10 @@ export class IngestService {
       }
       if (!withinClockSkew(observedAt, receivedAt, this.clockSkewMs)) {
         results.push({ index: i, action: "rejected", schema: item.schema, reason: "observedAt in future beyond clock skew" });
+        continue;
+      }
+      if (!withinMaxAge(observedAt, receivedAt, this.maxAgeMs)) {
+        results.push({ index: i, action: "rejected", schema: item.schema, reason: "observedAt older than max ingest age" });
         continue;
       }
       switch (item.schema) {

@@ -19,7 +19,7 @@ export function buildDeps(db: GwyfDb, config: ApiConfig): AppDeps {
   return {
     db,
     config,
-    ingest: new IngestService(db, config.clockSkewMs),
+    ingest: new IngestService(db, config.clockSkewMs, config.ingestMaxAgeMs),
     rateLimiter: new RateLimiter(config.ingestRatePerMinute),
     getObserver,
     verifySignature,

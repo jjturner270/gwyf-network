@@ -455,3 +455,66 @@ describe("lobby identity stability", () => {
     expect(lobbies[0]!.lastSeenAt).toBe(at(-5_000));
   });
 });
+
+describe("adversarial ingest", () => {
+  const pairX = generateObserverKeyPair();
+  const pairY = generateObserverKeyPair();
+  const LOBBY_SPAM = "6600998877665544";
+
+  it("registers the observers used by this slice", async () => {
+    await register(pairX);
+    await register(pairY);
+  });
+
+  it("rejects a signature made by a different key than the claimed observer", async () => {
+    const body = lobbySightingBody(pairX, "12345", at(0));
+    const signature = signBytes(pairX, body);
+    const response = await api.inject({
+      method: "POST",
+      url: "/v1/ingest/lobby-sightings",
+      headers: {
+        "content-type": "application/json",
+        "x-observer-id": deriveObserverId(pairY.publicKeyHex),
+        "x-observer-signature": signature,
+      },
+      payload: body,
+    });
+    expect(response.statusCode).toBe(401);
+    expect(JSON.parse(response.body).reason).toBe("bad_signature");
+  });
+
+  it("rejects an ancient observation timestamp", async () => {
+    const body = lobbySightingBody(pairX, "12345", new Date(NOW - 8 * 24 * 3_600_000).toISOString());
+    const response = await ingest(pairX, "/v1/ingest/lobby-sightings", body);
+    expect(response.statusCode).toBe(422);
+    expect(JSON.parse(response.body).reason).toBe("observedAt older than max ingest age");
+  });
+
+  it("rejects a malformed lobby id", async () => {
+    const body = lobbySightingBody(pairX, "bad id with spaces!", at(0));
+    const response = await ingest(pairX, "/v1/ingest/lobby-sightings", body);
+    expect(response.statusCode).toBe(422);
+  });
+
+  it("spamming old observations cannot keep a dead lobby alive", async () => {
+    advance(BASE - NOW);
+    await ingest(pairX, "/v1/ingest/lobby-sightings", lobbySightingBody(pairX, LOBBY_SPAM, at(-5_000)));
+
+    advance(BASE - NOW + 400_000);
+    let lobbies = liveLobby(LOBBY_SPAM, (await api.inject({ method: "GET", url: "/v1/lobbies/live" })).body);
+    expect(lobbies).toHaveLength(0);
+
+    for (let i = 0; i < 3; i++) {
+      const response = await ingest(pairX, "/v1/ingest/lobby-sightings", lobbySightingBody(pairX, LOBBY_SPAM, at(-5_000)));
+      expect(response.statusCode).toBe(202);
+    }
+
+    lobbies = liveLobby(LOBBY_SPAM, (await api.inject({ method: "GET", url: "/v1/lobbies/live" })).body);
+    expect(lobbies).toHaveLength(0);
+
+    const all = JSON.parse((await api.inject({ method: "GET", url: "/v1/lobbies" })).body);
+    const retained = all.lobbies.find((l: { lobbyId: string }) => l.lobbyId === LOBBY_SPAM);
+    expect(retained.status).toBe("expired");
+    expect(retained.lastSeenAt).toBe(at(-5_000));
+  });
+});
