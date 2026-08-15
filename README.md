@@ -12,16 +12,26 @@ Lobbies, maps, settings, player counts, activity, timestamps. Not player histori
 
 ## Status
 
-Phase 0–2 of the MVP is built and proven end-to-end:
+Phases 0–2 of the MVP plus the multi-observer truth slice are built and proven:
 
 - Protocol schemas (`lobby-sighting.v1`, `course-sighting.v1`, `runtime-event.v1`, `batch.v1`)
-- Signed ingest — append-only, idempotent, rate-limited
-- Lobby derivation with explainable confidence (`active` / `likely_active` / `stale` / `expired`)
+- Signed ingest — append-only, idempotent, rate-limited, clock-bounded
+- Multi-observer reconciliation — one lobby per `steamLobbyId` no matter how many
+  observers see it, per-observer sightings preserved, deterministic metadata
+  resolution, `observerCount` tracked
+- Formalized freshness — `live`/`likely_active`/`stale`/`expired` derived purely
+  from observation timestamps; observers never send a "goodbye"
+- Lobby identity stability — host name/map/mode/player changes and repeated
+  browser refreshes all resolve to the same lobby record
+- Adversarial ingest coverage — tampered payloads, wrong keys, duplicates,
+  clock skew (future + ancient), malformed ids, and old-observation spam all
+  rejected or harmless
 - Live radar API with filters and session inference
 - A fake-mod harness that simulates independent observers without launching GWYF
 - A real game hook (`UnityLobbyHook` + Harmony bindings) that turns a vanilla GWYF
   lobby-browser search into signed, queued, batched observations — cross-language
   signing proven with shared golden fixtures (C# signs, TypeScript verifies)
+- Reproducible release packaging (`scripts/package-mod.ps1` → BepInEx layout ZIP)
 
 Not yet built (deliberately): map atlas, course fingerprints, accounts, active scanning, community tags, frontend beyond raw JSON.
 
@@ -70,7 +80,7 @@ curl -s localhost:3000/v1/lobbies/live
 The emit script simulates three lobbies: one corroborated by both observers, one that fades (watch it degrade `active → likely_active → stale → expire`), one single-observer. Observer keys persist in `scripts/.keys/` so restarts keep the same identity.
 
 ```bash
-pnpm test               # 36 tests: protocol, derivation, API chain
+pnpm test               # 62 tests: protocol, derivation, reconciliation, API chain
 pnpm build              # typecheck + compile all packages
 ```
 
@@ -88,7 +98,35 @@ pnpm build              # typecheck + compile all packages
 | GET | `/v1/lobbies/:steamLobbyId` | current derived state |
 | GET | `/v1/lobbies/:steamLobbyId/history` | inferred sessions, 30-min gap splits |
 
-Ingest requires `X-Observer-Id` and `X-Observer-Signature` (ed25519 over the raw request body). Anything a previous sighting id also carries is `duplicate` — replaying is safe forever.
+Lobby responses carry both `recentObservers` (distinct observers in the last 45 s)
+and `observerCount` (distinct observers within the observation window — the retained
+sightings of that lobby; not "everyone who has ever seen it").
+
+Ingest requires `X-Observer-Id` and `X-Observer-Signature` (ed25519 over the raw request body). Anything a previous sighting id also carries is `duplicate` — replaying is safe forever. `observedAt` must be within the clock-skew window (default 60 s into the future) and no older than the max ingest age (default 7 days). The 7-day bound is a transport/integrity bound: an accepted old sighting is historical evidence, never presence — freshness derives only from `observedAt`.
+
+## Multi-observer reconciliation
+
+Multiple observers seeing the same lobby is the point of the network, so the
+rules are explicit and deterministic (implemented in
+`apps/api/src/services/derive-lobby-state.ts`):
+
+1. **Identity is the `steamLobbyId`** — every sighting of the same lobby id is
+   one lobby, however many observers report it or however the lobby evolves.
+   There is no separate lobby table; the lobby is the grouping over append-only
+   sightings.
+2. **Each signed sighting is preserved independently** — raw rows are never
+   merged or rewritten; `sightingCount` and `observerCount` count them.
+3. **`players` / `capacity`** come from the newest sighting.
+4. **`name` / `map` / `mode`** come from the newest sighting that carries a
+   non-null value — a null field never erases a known value (host renames are
+   reflected; a partial observation doesn't blank the lobby; once a value is
+   known, an observer that can no longer determine it can't clear it —
+   intentional).
+5. **Ties on `observedAt`** break on the smallest observer id in UTF-16
+   code-unit order (the JS default string comparison), so the same input
+   always derives the same output.
+6. **`lastSeenAt`** is the freshest valid observation; **`firstSeenAt`** the
+   oldest. Observation timestamps are the only clock that matters.
 
 ## Confidence heuristic
 
@@ -99,6 +137,20 @@ active         newest sighting ≤ 15s OR ≥2 observers within 45s
 likely_active  newest sighting ≤ 90s
 stale          newest sighting ≤ 5 min
 expired        everything older
+```
+
+## Freshness semantics
+
+There are no join/leave or "goodbye" messages in the protocol — a lobby goes
+live, ages, and expires purely from the `observedAt` timestamps of valid
+observations. An observer that stops refreshing just fades out; resubmitting
+old observations with new sighting ids cannot keep a dead lobby alive.
+
+```
+active          newest observation ≤ 15 s OR ≥2 observers within 45 s
+likely_active   newest observation ≤ 90 s (single observer)
+stale           newest observation ≤ 5 min — still listed on /live
+expired         everything older — dropped from /live, history retained on /v1/lobbies
 ```
 
 Confidence blends age against 5 minutes, corroboration (capped at 2 observers), recent sighting rate, and penalizes population instability.
@@ -129,6 +181,33 @@ instrument-only mode (`HOOK UNAVAILABLE`). Course observation is disabled until
 course fingerprints are validated live; deleting the identity file under
 `BepInEx/gwyf-community/` resets the observer identity.
 
+### Configuration
+
+`BepInEx/config/com.gwyf.community.cfg` (created on first run) is the source of
+truth — `network.apiBaseUrl`, `network.enabled`, `observation.lobbyEnabled`,
+`queue.*`, `diagnostics.verboseLogging`. Environment variables remain as
+overrides for dev/test runs.
+
+### Support surface
+
+State lives under `BepInEx/gwyf-community/`:
+`observer_identity.json` (keypair), `observer-id.txt` (the public observer id —
+include it when reporting issues), `diagnostics.txt` (rendered version/build/
+hook/network diagnostics, refreshed on each flush), `observation_queue.jsonl`.
+
+### Release packaging
+
+```pwsh
+$env:GWYF_REFS = "path/to/BepInEx/interop"
+pwsh scripts/package-mod.ps1        # -> dist/GWYFCommunityNetwork-<version>.zip
+```
+
+Builds `Release` with deterministic settings, stages the BepInEx
+`plugins/GWYFCommunityNetwork/` layout (mod DLL + BouncyCastle runtime dep +
+README), and zips it. The DLL is reproducible (same refs + same sources → same
+bytes); the ZIP container itself is not normalized (timestamps/order), so
+successive ZIP hashes may differ even though the build and layout are stable.
+
 ## Privacy boundary
 
 Public by default: lobby ids, names, player counts, maps, timestamps, aggregate activity, fingerprints, confidence. Never public: durable Steam ids, join history, relationships, IPs, hardware fingerprints, behavioral profiles. Observer identities are per-installation keypairs — a human never attaches identity unless they choose to.
@@ -139,3 +218,9 @@ Public by default: lobby ids, names, player counts, maps, timestamps, aggregate 
 2. Course fingerprints (`SceneFingerprint` needs a real normalized scene snapshot pipeline)
 3. Map atlas + version lineage
 4. Community layer (tags, creator claims) — only after the observation network produces useful data on its own
+
+The current milestone — **Distributed Observation Slice: two clients, one truth** —
+needs only the in-game two-machine run: two observers on the same public lobby,
+the server retaining both signed observations, `/v1/lobbies/live` exposing one
+reconciled lobby with `observerCount: 2`, and the lobby aging out when
+observations stop (checklist in `docs/manual-gwyf-hook-tests.md`).
