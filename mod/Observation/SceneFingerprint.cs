@@ -22,18 +22,18 @@ public sealed class SceneFingerprint
         using var sha = System.Security.Cryptography.SHA256.Create();
         var bytes = System.Text.Encoding.UTF8.GetBytes(string.Join("\n", canonical));
         var hash = sha.ComputeHash(bytes);
-        return "map_sha256_" + Convert.ToHexStringLower(hash);
+        return "map_sha256_" + Convert.ToHexString(hash).ToLowerInvariant();
     }
 }
 
 public sealed class SceneObjectSnapshot
 {
-    public required string Name { get; init; }
-    public required string Type { get; init; }
-    public required string ParentChain { get; init; }
-    public required bool IsStatic { get; init; }
-    public required float PositionX { get; init; }
-    public required float PositionY { get; init; }
-    public required float PositionZ { get; init; }
-    public required int HoleIndex { get; init; }
+    public string Name { get; init; } = "";
+    public string Type { get; init; } = "";
+    public string ParentChain { get; init; } = "";
+    public bool IsStatic { get; init; }
+    public float PositionX { get; init; }
+    public float PositionY { get; init; }
+    public float PositionZ { get; init; }
+    public int HoleIndex { get; init; }
 }

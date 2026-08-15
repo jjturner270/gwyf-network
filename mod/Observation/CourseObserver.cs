@@ -9,10 +9,10 @@ public interface ICourseObservationSource
 
 public sealed class CourseLoaded
 {
-    public required string DisplayName { get; init; }
-    public required string SceneName { get; init; }
-    public required int HoleCount { get; init; }
-    public required int ObjectCount { get; init; }
+    public string DisplayName { get; init; } = "";
+    public string SceneName { get; init; } = "";
+    public int HoleCount { get; init; }
+    public int ObjectCount { get; init; }
     public string? Fingerprint { get; init; }
 }
 

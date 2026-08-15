@@ -22,6 +22,12 @@ export const observerInfoSchema = z.object({
     .max(64)
     .describe("server-issued observer id, not a human identity"),
   clientVersion: z.string().min(1).max(32),
+  gameBuild: z
+    .string()
+    .min(1)
+    .max(32)
+    .optional()
+    .describe("client-side game build string reported at observation time"),
   searchScope: z.enum(SEARCH_SCOPES).optional(),
 });
 
@@ -34,14 +40,29 @@ export const lobbySightingSchema = z.object({
     steamLobbyId: z
       .string()
       .min(1)
-      .max(32)
-      .regex(/^[0-9]+$/)
-      .describe("64-bit Steam lobby id"),
-    name: z.string().min(1).max(64),
+      .max(64)
+      .regex(/^[0-9A-Za-z_-]+$/)
+      .describe("external lobby identifier (Steam lobby id or platform room id)"),
+    name: z
+      .string()
+      .min(1)
+      .max(64)
+      .nullish()
+      .describe("host-chosen lobby name; null when the game exposes none"),
     members: z.number().int().min(0).max(128),
     capacity: z.number().int().min(1).max(128),
-    map: z.string().min(1).max(128),
-    mode: z.string().min(1).max(64),
+    map: z
+      .string()
+      .min(1)
+      .max(128)
+      .nullish()
+      .describe("map/course name; null when unknown or custom-ref only"),
+    mode: z
+      .string()
+      .min(1)
+      .max(64)
+      .nullish()
+      .describe("game mode; null when the game exposes none"),
     rawMetadata: z.record(z.string(), z.unknown()).optional(),
   }),
   observer: observerInfoSchema,

@@ -7,20 +7,38 @@
     <LangVersion>latest</LangVersion>
     <AssemblyName>GWYFCommunityNetwork</AssemblyName>
     <RootNamespace>GwyfCommunity</RootNamespace>
+    <Version>0.2.0</Version>
   </PropertyGroup>
 
   <!--
-    Point GWYF_REFS and BEPINEX_REFS at the folders containing:
+    Game-bound code (BepInEx plugin, Harmony patches against the actual game
+    types) compiles only when GWYF_REFS points at the game's references:
     - BepInEx.Core.dll, BepInEx.Unity.dll
     - UnityEngine.CoreModule.dll, UnityEngine.dll
-    - Assembly-CSharp.dll (Golf With Your Friends)
+    - Il2CppAssembly-CSharp.dll / Assembly-CSharp.dll (generated interop on
+      IL2CPP builds, or the Mono assembly on Windows builds)
+    - Harmony (bundled with BepInEx 6)
+
+    Everything else (identity, queue, network, observers, hooks) builds without
+    the game so CI and unit tests can exercise the full pipeline.
   -->
+  <ItemGroup>
+    <Compile Remove="GameRuntime/**/*.cs" Condition="!Exists('$(GWYF_REFS)')" />
+    <Compile Remove="test/**/*.cs" />
+  </ItemGroup>
+
   <ItemGroup Condition="Exists('$(GWYF_REFS)')">
+    <Compile Include="GameRuntime/**/*.cs" />
     <Reference Include="BepInEx.Core"><HintPath>$(GWYF_REFS)/BepInEx.Core.dll</HintPath></Reference>
     <Reference Include="BepInEx.Unity"><HintPath>$(GWYF_REFS)/BepInEx.Unity.dll</HintPath></Reference>
     <Reference Include="UnityEngine"><HintPath>$(GWYF_REFS)/UnityEngine.dll</HintPath></Reference>
     <Reference Include="UnityEngine.CoreModule"><HintPath>$(GWYF_REFS)/UnityEngine.CoreModule.dll</HintPath></Reference>
-    <Reference Include="Assembly-CSharp"><HintPath>$(GWYF_REFS)/Assembly-CSharp.dll</HintPath></Reference>
+    <Reference Include="Il2CppAssembly-CSharp"><HintPath>$(GWYF_REFS)/Il2CppAssembly-CSharp.dll</HintPath></Reference>
+    <Reference Include="0Harmony"><HintPath>$(GWYF_REFS)/0Harmony.dll</HintPath></Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.4.0" />
   </ItemGroup>
 
 </Project>

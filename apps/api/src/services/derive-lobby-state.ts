@@ -13,9 +13,9 @@ export interface LobbySightingRow {
   observedAt: number;
   memberCount: number;
   capacity: number;
-  lobbyName: string;
-  mapName: string;
-  gameMode: string;
+  lobbyName: string | null;
+  mapName: string | null;
+  gameMode: string | null;
   observerId: string;
 }
 
@@ -87,11 +87,11 @@ export function deriveLobbyState(
 
   return {
     lobbyId: last.steamLobbyId,
-    name: last.lobbyName,
+    name: last.lobbyName ?? "Unknown",
     players: last.memberCount,
     capacity: last.capacity,
-    mapName: last.mapName,
-    mode: last.gameMode,
+    mapName: last.mapName ?? "Unknown",
+    mode: last.gameMode ?? "Unknown",
     firstSeenAt: new Date(first.observedAt).toISOString(),
     lastSeenAt: new Date(last.observedAt).toISOString(),
     lastSeenSecondsAgo: Math.max(0, Math.round(ageMs / 1000)),

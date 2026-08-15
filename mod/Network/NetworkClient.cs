@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -5,33 +6,71 @@ using GwyfCommunity.Identity;
 
 namespace GwyfCommunity.Network;
 
+public sealed class IngestItemResult
+{
+    public int Index { get; set; }
+    public string Action { get; set; } = ""; // accepted | duplicate | rejected
+    public string? Reason { get; set; }
+}
+
+public sealed class IngestAck
+{
+    public int Accepted { get; set; }
+    public int Duplicates { get; set; }
+    public int Rejected { get; set; }
+    public List<IngestItemResult> Items { get; set; } = new();
+
+    public IEnumerable<int> DeliveredIndexes => Items
+        .Where(i => i.Action is "accepted" or "duplicate")
+        .Select(i => i.Index);
+}
+
+/// <summary>
+/// Production network path. Sends signed batches to the existing ingest API and
+/// surfaces per-item acknowledgements so the queue can remove exactly what the
+/// server stored. Never throws for network-level failures (caller decides whether
+/// to retry with backoff); throws only for programming errors.
+/// </summary>
 public sealed class NetworkClient
 {
-    private readonly HttpClient _http = new();
+    private readonly HttpClient _http;
     private readonly Uri _baseUrl;
-    private readonly ObserverIdentity _identity;
+    private readonly IObserverIdentity _identity;
     private readonly string _userAgent;
+    private readonly TimeSpan _requestTimeout;
 
-    public NetworkClient(Uri baseUrl, ObserverIdentity identity)
+    public string? LastError { get; private set; }
+    public string? LastRejectedReason { get; private set; }
+
+    public NetworkClient(Uri baseUrl, IObserverIdentity identity, string modVersion, TimeSpan? requestTimeout = null)
     {
         _baseUrl = baseUrl;
         _identity = identity;
-        _userAgent = $"gwyf-community-mod/{identity.ObserverId}";
+        _userAgent = $"gwyf-community-mod/{modVersion}";
+        _requestTimeout = requestTimeout ?? TimeSpan.FromSeconds(10);
+        _http = new HttpClient { Timeout = _requestTimeout };
     }
 
-    public async Task RegisterObserverAsync(string clientVersion, CancellationToken ct)
+    public async Task RegisterObserverAsync(string clientVersion, string? gameBuild, CancellationToken ct)
     {
         var body = JsonSerializer.Serialize(new
         {
-            publicKey = _identity.PublicKeyHex,
+            publicKey = _identity.PublicKey,
             clientVersion,
+            gameBuild = gameBuild ?? (object?)null,
             protocolVersion = 1,
         });
-        using var response = await SendAsync(HttpMethod.Post, "/v1/observers", body, ct: ct);
+        using var response = await SendAsync(HttpMethod.Post, "/v1/observers", body, ct);
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task SendBatchAsync(IEnumerable<object> payloads, CancellationToken ct)
+    /// <summary>
+    /// Sends one signed batch. Returns null when the request failed at the
+    /// transport level or the server rejected the batch outright
+    /// (401/403/413/429/5xx) — callers retry with backoff. Returns the ack when
+    /// the server processed the batch (202), including per-item rejections.
+    /// </summary>
+    public async Task<IngestAck?> SendBatchAsync(IReadOnlyList<object> payloads, CancellationToken ct)
     {
         var batch = new
         {
@@ -40,8 +79,35 @@ public sealed class NetworkClient
             items = payloads,
         };
         var body = JsonSerializer.Serialize(batch);
-        using var response = await SendAsync(HttpMethod.Post, "/v1/ingest/batch", body, ct: ct);
-        response.EnsureSuccessStatusCode();
+        try
+        {
+            using var response = await SendAsync(HttpMethod.Post, "/v1/ingest/batch", body, ct);
+            if (response.IsSuccessStatusCode)
+            {
+                LastError = null;
+                var ack = JsonSerializer.Deserialize<IngestAck>(await response.Content.ReadAsStringAsync(ct));
+                LastRejectedReason = ack?.Items.FirstOrDefault(i => i.Action == "rejected")?.Reason;
+                return ack ?? new IngestAck();
+            }
+
+            var status = (int)response.StatusCode;
+            var responseBody = await response.Content.ReadAsStringAsync(ct);
+            LastError = $"HTTP {status}: {Truncate(responseBody, 200)}";
+            if (status == 401) LastError = $"observer not accepted ({Truncate(responseBody, 120)}) — check registration";
+            if (status == 413) LastError = "batch too large";
+            if (status == 429) LastError = "rate limited";
+            return null;
+        }
+        catch (TaskCanceledException)
+        {
+            LastError = $"request timeout ({_requestTimeout.TotalSeconds:0}s)";
+            return null;
+        }
+        catch (HttpRequestException ex)
+        {
+            LastError = $"network failure: {ex.Message}";
+            return null;
+        }
     }
 
     private async Task<HttpResponseMessage> SendAsync(
@@ -58,5 +124,11 @@ public sealed class NetworkClient
         message.Headers.Add("x-observer-id", _identity.ObserverId);
         message.Headers.Add("x-observer-signature", _identity.Sign(body));
         return await _http.SendAsync(message, ct);
+    }
+
+    private static string Truncate(string s, int max)
+    {
+        s = s.Replace('\n', ' ').Replace('\r', ' ');
+        return s.Length <= max ? s : s[..max] + "…";
     }
 }

@@ -54,8 +54,13 @@ describe("protocol schemas", () => {
     expect(parsed.success).toBe(true);
   });
 
-  it("rejects a non-numeric steam lobby id", () => {
-    const bad = { ...docExample, lobby: { ...docExample.lobby, steamLobbyId: "not-a-number" } };
+  it("accepts photon-style room ids (build 256 uses guid-like ids, not numeric)", () => {
+    const good = { ...docExample, lobby: { ...docExample.lobby, steamLobbyId: "6052dc1a-2f0e-4d84-b5e3-1d5cd616d419" } };
+    expect(lobbySightingSchema.safeParse(good).success).toBe(true);
+  });
+
+  it("rejects a steam lobby id with disallowed characters", () => {
+    const bad = { ...docExample, lobby: { ...docExample.lobby, steamLobbyId: "room with spaces" } };
     expect(lobbySightingSchema.safeParse(bad).success).toBe(false);
   });
 

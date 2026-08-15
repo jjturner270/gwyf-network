@@ -29,7 +29,7 @@ public sealed class LobbyInfo
     public string SteamLobbyId { get; set; } = "";
 
     [JsonPropertyName("name")]
-    public string Name { get; set; } = "";
+    public string? Name { get; set; }
 
     [JsonPropertyName("members")]
     public int Members { get; set; }
@@ -38,10 +38,10 @@ public sealed class LobbyInfo
     public int Capacity { get; set; }
 
     [JsonPropertyName("map")]
-    public string Map { get; set; } = "";
+    public string? Map { get; set; }
 
     [JsonPropertyName("mode")]
-    public string Mode { get; set; } = "";
+    public string? Mode { get; set; }
 
     [JsonPropertyName("rawMetadata")]
     public Dictionary<string, object>? RawMetadata { get; set; }
@@ -54,6 +54,9 @@ public sealed class ObserverInfo
 
     [JsonPropertyName("clientVersion")]
     public string ClientVersion { get; set; } = "0.1.0";
+
+    [JsonPropertyName("gameBuild")]
+    public string? GameBuild { get; set; }
 
     [JsonPropertyName("searchScope")]
     public string? SearchScope { get; set; }

@@ -1,0 +1,27 @@
+{
+  "schema": "gwyf.lobby-sighting.v1",
+  "protocolVersion": 1,
+  "sightingId": "2f5a2a4d-0a34-4dbb-9d8f-7c29a3f0c71e",
+  "observedAt": "2026-08-15T12:00:00.0000000+00:00",
+  "lobby": {
+    "steamLobbyId": "6052dc1a-2f0e-4d84-b5e3-1d5cd616d419",
+    "name": "TestLobby",
+    "members": 3,
+    "capacity": 12,
+    "map": "Castle",
+    "mode": "Classic",
+    "rawMetadata": {
+      "lobbyType": "Public",
+      "isVisible": "True",
+      "identifier": "6052dc1a-2f0e-4d84-b5e3-1d5cd616d419",
+      "observationBatchId": "batch_abc123def456",
+      "searchId": "search_1234abcd5678"
+    }
+  },
+  "observer": {
+    "installationId": "obs_2fdf0fa0949f3e2aaa8ec6eaa55593d1",
+    "clientVersion": "0.2.0",
+    "gameBuild": "256.999952",
+    "searchScope": "default"
+  }
+}
