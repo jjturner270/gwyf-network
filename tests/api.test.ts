@@ -217,13 +217,14 @@ describe("ingest chain", () => {
     expect(response.statusCode).toBe(200);
     const payload = JSON.parse(response.body) as {
       count: number;
-      lobbies: Array<{ lobbyId: string; name: string; players: number; capacity: number; status: string; confidence: number; recentObservers: number }>;
+      lobbies: Array<{ lobbyId: string; name: string; players: number; capacity: number; status: string; confidence: number; recentObservers: number; observerCount: number }>;
     };
     const lobby = payload.lobbies.find((l) => l.lobbyId === "10977524123456789");
     expect(lobby).toBeDefined();
     expect(lobby!.players).toBe(7);
     expect(lobby!.capacity).toBe(12);
     expect(lobby!.recentObservers).toBe(2);
+    expect(lobby!.observerCount).toBe(2);
     expect(["active", "likely_active", "stale", "expired"]).toContain(lobby!.status);
     expect(response.body).not.toContain("obs_");
     expect(response.body).not.toContain("publicKey");
@@ -268,5 +269,189 @@ describe("ingest chain", () => {
 
     const missing = await api.inject({ method: "GET", url: "/v1/lobbies/00000000000000000" });
     expect(missing.statusCode).toBe(404);
+  });
+});
+
+// Base clock for the reconciliation/freshness/identity/adversarial slices.
+const BASE = NOW + 600_000;
+
+function at(offsetMs: number) {
+  return new Date(BASE + offsetMs).toISOString();
+}
+
+function lobbySightingBody(
+  keyPair: ObserverKeyPair,
+  steamLobbyId: string,
+  observedAt: string,
+  overrides: Record<string, unknown> = {},
+) {
+  const body = lobbyBody(keyPair, { observedAt, lobby: { steamLobbyId, name: "Fuzzy's Hellhole", members: 7, capacity: 12, map: "Custom Map", mode: "Classic" } });
+  const parsed = JSON.parse(body) as Record<string, unknown>;
+  parsed.lobby = { steamLobbyId, name: "Fuzzy's Hellhole", members: 7, capacity: 12, map: "Custom Map", mode: "Classic", ...(overrides.lobby as object) };
+  return JSON.stringify(parsed);
+}
+
+async function register(keyPair: ObserverKeyPair) {
+  const response = await ingest(keyPair, "/v1/observers", JSON.stringify({
+    publicKey: keyPair.publicKeyHex,
+    clientVersion: "0.1.0",
+    protocolVersion: 1,
+  }));
+  expect(response.statusCode).toBe(201);
+}
+
+function liveLobby(lobbyId: string, responseBody: string) {
+  const payload = JSON.parse(responseBody) as {
+    lobbies: Array<{ lobbyId: string; name: string; players: number; status: string; lastSeenAt: string; observerCount: number; recentObservers: number; firstSeenAt: string; sightingCount: number }>;
+  };
+  return payload.lobbies.filter((l) => l.lobbyId === lobbyId);
+}
+
+describe("multi-observer reconciliation", () => {
+  const pairC = generateObserverKeyPair();
+  const pairD = generateObserverKeyPair();
+  const LOBBY = "88001234567890001";
+
+  it("registers the observers used by this slice", async () => {
+    await register(pairC);
+    await register(pairD);
+  });
+
+  it("produces exactly one lobby when two observers see the same id", async () => {
+    advance(BASE - NOW);
+    const fromC = lobbySightingBody(pairC, LOBBY, at(-30_000));
+    const fromD = lobbySightingBody(pairD, LOBBY, at(-20_000));
+    await ingest(pairC, "/v1/ingest/lobby-sightings", fromC);
+    await ingest(pairD, "/v1/ingest/lobby-sightings", fromD);
+
+    const response = await api.inject({ method: "GET", url: "/v1/lobbies/live" });
+    expect(response.statusCode).toBe(200);
+    const lobbies = liveLobby(LOBBY, response.body);
+    expect(lobbies).toHaveLength(1);
+    expect(lobbies[0]!.observerCount).toBe(2);
+    expect(lobbies[0]!.recentObservers).toBe(2);
+  });
+
+  it("preserves each signed sighting independently", async () => {
+    const rows = db.$client
+      .prepare(
+        "SELECT sighting_id, observer_id, signature, observed_at FROM lobby_sightings WHERE steam_lobby_id = ? ORDER BY id",
+      )
+      .all(LOBBY) as Array<{ sighting_id: string; observer_id: string; signature: string; observed_at: number }>;
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.observer_id).not.toBe(rows[1]!.observer_id);
+    expect(rows[0]!.sighting_id).not.toBe(rows[1]!.sighting_id);
+    expect(rows[0]!.signature).toBeTruthy();
+    expect(rows[1]!.signature).toBeTruthy();
+  });
+
+  it("lastSeenAt reflects the freshest valid observation", async () => {
+    const lobbies = liveLobby(LOBBY, (await api.inject({ method: "GET", url: "/v1/lobbies/live" })).body);
+    expect(lobbies[0]!.lastSeenAt).toBe(at(-20_000));
+  });
+
+  it("resolves conflicting metadata deterministically (newest non-null wins)", async () => {
+    advance(BASE - NOW + 10_000);
+    const renamed = lobbySightingBody(pairD, LOBBY, at(-5_000), {
+      lobby: { name: "Renamed", members: 9, capacity: 12 },
+    });
+    await ingest(pairD, "/v1/ingest/lobby-sightings", renamed);
+
+    const lobbies = liveLobby(LOBBY, (await api.inject({ method: "GET", url: "/v1/lobbies/live" })).body);
+    expect(lobbies[0]!.name).toBe("Renamed");
+    expect(lobbies[0]!.players).toBe(9);
+    expect(lobbies[0]!.sightingCount).toBe(3);
+    expect(lobbies[0]!.observerCount).toBe(2);
+  });
+});
+
+describe("freshness semantics", () => {
+  const pairE = generateObserverKeyPair();
+  const LOBBY_OFF = "88001234567890002";
+  const LOBBY_STAY = "88001234567890003";
+
+  it("registers the observer used by this slice", async () => {
+    await register(pairE);
+  });
+
+  it("ages a lobby out from observation timestamps alone when the observer goes silent", async () => {
+    advance(BASE - NOW);
+    await ingest(pairE, "/v1/ingest/lobby-sightings", lobbySightingBody(pairE, LOBBY_OFF, at(-5_000)));
+
+    advance(BASE - NOW + 85_000);
+    let lobbies = liveLobby(LOBBY_OFF, (await api.inject({ method: "GET", url: "/v1/lobbies/live" })).body);
+    expect(lobbies[0]!.status).toBe("likely_active");
+
+    advance(BASE - NOW + 200_000);
+    lobbies = liveLobby(LOBBY_OFF, (await api.inject({ method: "GET", url: "/v1/lobbies/live" })).body);
+    expect(lobbies[0]!.status).toBe("stale");
+
+    advance(BASE - NOW + 400_000);
+    lobbies = liveLobby(LOBBY_OFF, (await api.inject({ method: "GET", url: "/v1/lobbies/live" })).body);
+    expect(lobbies).toHaveLength(0);
+
+    const all = JSON.parse((await api.inject({ method: "GET", url: "/v1/lobbies" })).body);
+    const retained = all.lobbies.find((l: { lobbyId: string }) => l.lobbyId === LOBBY_OFF);
+    expect(retained.status).toBe("expired");
+  });
+
+  it("drops one lobby while others remain visible", async () => {
+    advance(BASE - NOW);
+    await ingest(pairE, "/v1/ingest/lobby-sightings", lobbySightingBody(pairE, LOBBY_STAY, at(-10_000)));
+
+    advance(BASE - NOW + 300_000);
+    await ingest(pairE, "/v1/ingest/lobby-sightings", lobbySightingBody(pairE, LOBBY_STAY, at(295_000)));
+
+    advance(BASE - NOW + 400_000);
+    const response = await api.inject({ method: "GET", url: "/v1/lobbies/live" });
+    expect(liveLobby(LOBBY_OFF, response.body)).toHaveLength(0);
+    const stay = liveLobby(LOBBY_STAY, response.body);
+    expect(stay).toHaveLength(1);
+    expect(stay[0]!.status).toBe("stale");
+  });
+});
+
+describe("lobby identity stability", () => {
+  const pairF = generateObserverKeyPair();
+  const LOBBY_HOST = "77009876543210001";
+
+  it("registers the observer used by this slice", async () => {
+    await register(pairF);
+  });
+
+  it("host changes never fragment the lobby record", async () => {
+    advance(BASE - NOW);
+    await ingest(pairF, "/v1/ingest/lobby-sightings", lobbySightingBody(pairF, LOBBY_HOST, at(-120_000), {
+      lobby: { name: "Dockside", members: 3, capacity: 12, map: "Forest", mode: "Classic" },
+    }));
+    await ingest(pairF, "/v1/ingest/lobby-sightings", lobbySightingBody(pairF, LOBBY_HOST, at(-60_000), {
+      lobby: { name: "Dockside Arena", members: 5, capacity: 12, map: "Desert", mode: "Classic" },
+    }));
+    await ingest(pairF, "/v1/ingest/lobby-sightings", lobbySightingBody(pairF, LOBBY_HOST, at(-5_000), {
+      lobby: { name: "Dockside Arena", members: 7, capacity: 12, map: "Castle", mode: "Champions" },
+    }));
+
+    const lobbies = liveLobby(LOBBY_HOST, (await api.inject({ method: "GET", url: "/v1/lobbies/live" })).body);
+    expect(lobbies).toHaveLength(1);
+    const lobby = lobbies[0]!;
+    expect(lobby.name).toBe("Dockside Arena");
+    expect(lobby.status).toBe("active");
+    expect(lobby.firstSeenAt).toBe(at(-120_000));
+    expect(lobby.lastSeenAt).toBe(at(-5_000));
+    expect(lobby.sightingCount).toBe(3);
+    expect(lobby.observerCount).toBe(1);
+    expect(lobby.players).toBe(7);
+  });
+
+  it("lobby persists across repeated browser refreshes", async () => {
+    advance(BASE - NOW);
+    for (let i = 0; i < 5; i++) {
+      await ingest(pairF, "/v1/ingest/lobby-sightings", lobbySightingBody(pairF, LOBBY_HOST, at(-100_000 + i * 5_000)));
+    }
+    const lobbies = liveLobby(LOBBY_HOST, (await api.inject({ method: "GET", url: "/v1/lobbies/live" })).body);
+    expect(lobbies).toHaveLength(1);
+    expect(lobbies[0]!.sightingCount).toBe(8);
+    expect(lobbies[0]!.firstSeenAt).toBe(at(-120_000));
+    expect(lobbies[0]!.lastSeenAt).toBe(at(-5_000));
   });
 });

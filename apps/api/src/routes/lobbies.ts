@@ -59,6 +59,7 @@ function toResponse(s: LobbyLiveState) {
     lastSeenAt: s.lastSeenAt,
     lastSeenSecondsAgo: s.lastSeenSecondsAgo,
     recentObservers: s.recentObservers,
+    observerCount: s.observerCount,
     recentSightings: s.recentSightings,
     sightingCount: s.sightingCount,
     confidence: s.confidence,
