@@ -138,12 +138,105 @@ Lobby disappears
   → /live drops it after expiry; /v1/lobbies retains history
 ```
 
-## Acceptance (next milestone — Distributed Observation Slice)
+## Acceptance — two-machine distributed proof (release acceptance)
+
+**Freeze:** no feature work. These runs are acceptance only; touch code only if
+one of them exposes an actual defect.
+
+Save every artifact below into a dated folder (e.g. `docs/runs/2026-08-15-two-machine/`)
+so the night never has to be reconstructed from logs.
+
+| Evidence item | Value |
+| --- | --- |
+| Date / server commit |  |
+| Observer A id (machine A) | from `BepInEx/gwyf-community/observer-id.txt` |
+| Observer B id (machine B) |  |
+| Shared `steamLobbyId` |  |
+| Lobby observed (name/map/mode) |  |
+| A first sighting `observedAt` |  |
+| B first sighting `observedAt` |  |
+| Last A sighting before closing |  |
+| Last B sighting before closing |  |
+| Result | PASS / FAIL (reason) |
+
+Snapshot commands (run on the server machine while both clients observe):
+
+```bash
+curl -s localhost:3000/v1/lobbies/live > lobby-live-both.json
+curl -s localhost:3000/v1/lobbies/<steamLobbyId> > lobby-both.json
+curl -s localhost:3000/v1/lobbies/<steamLobbyId>/history > lobby-both-history.json
+```
+
+Prove two independent signed rows (not two rows from one client):
+
+```bash
+sqlite3 data/gwyf.db "SELECT observer_id, observed_at, signature FROM lobby_sightings WHERE steam_lobby_id='<steamLobbyId>' ORDER BY id;"
+```
+
+Decay polling — after A closes, poll ~6 times at 15 s; after B closes, poll at
+~1, 2, 5, 8 min to catch each freshness state:
+
+```bash
+for i in 1 2 3 4 5 6; do curl -s localhost:3000/v1/lobbies/<steamLobbyId> > decay-$i.json; sleep 15; done
+```
+
+Checklist:
+
+- [ ] Both clients on the same public lobby; server log shows two distinct observer ids
+- [ ] `/v1/lobbies/live` exposes **one** lobby with `observerCount: 2` and `recentObservers: 2` — `lobby-live-both.json` saved
+- [ ] Raw rows show both observers, distinct signatures and `observedAt`s
+- [ ] A closes → within the observer window `recentObservers` drops to 1 while the lobby stays live
+- [ ] B closes → lobby progresses `active → likely_active → stale → expired`; decay captures saved
+- [ ] `/v1/lobbies` retains history: `status: expired`, `lastSeenAt` at B's last sighting
+- [ ] Old-sighting replay does not resurrect it (`/v1/lobbies/live` stays empty)
+- [ ] No code changes required → tag `v0.2.0`
+
+## Packaged-build smoke (release acceptance)
+
+Test **the ZIP artifact** (`dist/GWYFCommunityNetwork-<version>.zip`), not the
+dev tree.
+
+1. `pwsh scripts/package-mod.ps1` → record ZIP path + SHA-256
+   (`Get-FileHash dist/GWYFCommunityNetwork-<version>.zip -Algorithm SHA256`)
+2. Extract into a clean-ish BepInEx install (back up any existing
+   `BepInEx/gwyf-community/` and the config file first)
+3. First launch: capture full log tail to file
+4. Open the vanilla lobby browser, search, capture the log tail again
+5. Close the game, relaunch once, capture the log tail
+6. Verify identity and config survive the restart
+
+| Evidence item | Value |
+| --- | --- |
+| ZIP path / SHA-256 |  |
+| Extracted into |  |
+| First-launch log | `smoke-first-launch.log` |
+| Search/flush log | `smoke-flush.log` |
+| Post-restart log | `smoke-restart.log` |
+| Observer id first launch |  |
+| Observer id after restart |  |
+| Result | PASS / FAIL (reason) |
+
+Checklist (covers the earlier quiet-logs smoke plus artifact and persistence):
+
+- [ ] Fresh extract has no `gwyf-community` state → created on first run
+- [ ] `BepInEx/config/com.gwyf.community.cfg` created with defaults bound
+      (`network.apiBaseUrl = http://127.0.0.1:3000`, observation enabled)
+- [ ] `observer-id.txt` matches the `observer identity …` startup line
+- [ ] `diagnostics.txt` shows hook adapter, game build, mod version
+- [ ] Default logging quiet: only `[Hook] lobby search started` and
+      `[Hook] search refresh: N sessions` per refresh
+- [ ] Exactly one `flushed N sightings (accepted=…, duplicates=…, rejected=…)`
+      per ack — nothing per-sighting
+- [ ] Ingest accepted server-side (row exists / `/v1/lobbies/live` returns the lobby)
+- [ ] Restart: same observer id, same config values, clean startup
+- [ ] No code changes required → tag `v0.2.0`
+
+## Release
 
 ```text
-Two separate machines observe the same public lobby.
-Server retains both signed observations (two rows, two signatures).
-/v1/lobbies/live exposes ONE reconciled lobby with observerCount: 2.
-Observations stop → the lobby ages live → stale → expired and leaves /live,
-while /v1/lobbies keeps its history.
+git tag -a v0.2.0 -m "Distributed Observation"
+git push origin v0.2.0
 ```
+
+Milestone: independent game clients produce signed lobby observations that
+reconcile deterministically into a single freshness-aware network view.
