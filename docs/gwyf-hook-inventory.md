@@ -150,6 +150,11 @@ exception ever propagates into vanilla flow. No polling, no UI scraping, no muta
 
 - IL2CPP requires **BepInEx 6 (Bleeding Edge)** for macOS —
   https://builds.bepinex.dev/projects/bepinex_be
+- **Minimum BE.785 (2026-06)** for game build 303: older BE builds (e.g. BE.697)
+  crash at boot with `0xc0000005` in `GameAssembly.dll` even with zero plugins —
+  the Cpp2IL regression fixes in BE.784/785 are required to generate interop for
+  the newer metadata. Verified on Windows: BE.697 crashes, BE.785 boots clean to
+  the FrontendMenu with the plugin attached.
 - Game types are referenced through Il2CppInterop-generated assemblies in
   `BepInEx/interop/` (`Il2CppAssembly-CSharp.dll` etc.). Point `GWYF_REFS` at that
   folder to compile the game-bound patch (`mod/Hooks/Game/`).
