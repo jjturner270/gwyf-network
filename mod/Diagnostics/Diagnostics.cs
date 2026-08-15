@@ -1,3 +1,4 @@
+using GwyfCommunity.Compatibility;
 using GwyfCommunity.Observation;
 
 namespace GwyfCommunity.Diagnostics;
@@ -40,6 +41,15 @@ public sealed class DiagnosticsPanel
     public string? CurrentMapFingerprint { get; set; }
     public int ProtocolVersion => 1;
 
+    /// <summary>Compatibility gate outcome. Null until the startup check resolves.</summary>
+    public GateResult? Gate { get; set; }
+    public bool GateResolved { get; set; }
+
+    public string StatusLabel =>
+        !GateResolved
+            ? "CHECKING..."
+            : LiveStatus.Current(Gate!, ServiceOnline).Label();
+
     public void RecordHookError(string where, Exception ex)
     {
         HookErrorCount++;
@@ -61,6 +71,44 @@ public sealed class DiagnosticsPanel
 
     public string Render()
     {
+        var lines = new List<string>
+        {
+            $"GWYF Community Observer {ModVersion}",
+            "",
+            $"STATUS  {StatusLabel}",
+        };
+
+        if (!GateResolved)
+        {
+            lines.Add("");
+            lines.Add("Checking compatibility with the community server...");
+            lines.Add($"Game build:   {DisplayGameBuild}");
+            lines.Add($"Hook adapter: {HookAdapter}");
+            lines.Add($"Observer:     {ObserverId}");
+            return Join(lines);
+        }
+
+        if (!Gate!.MayObserve)
+        {
+            lines.Add("");
+            lines.Add(Gate.Detail);
+            lines.Add("");
+            lines.Add($"Hook:         UNAVAILABLE (never attached)");
+            lines.Add($"Mod version:  {ModVersion}");
+            lines.Add($"Hook adapter: {HookAdapter}");
+            lines.Add($"Observer:     {ObserverId}");
+            if (Gate.Status == ClientStatus.UnsupportedGameBuild)
+            {
+                lines.Add($"Installed build: {DisplayGameBuild}");
+                lines.Add($"Supported builds: {Gate.SupportedBuildsSummary}");
+            }
+            if (Gate.Status is ClientStatus.ClientUpdateRequired or ClientStatus.IngestDisabled)
+            {
+                lines.Add($"Server minimum client: {Gate.Config?.MinimumClientVersion ?? "?"}");
+            }
+            return Join(lines);
+        }
+
         var lastSearch = LastSearchAt is null
             ? "never"
             : $"{FormatAgo(LastSearchAt.Value)} ({LastSearchLobbyCount} lobbies)";
@@ -68,18 +116,28 @@ public sealed class DiagnosticsPanel
             ? "never"
             : $"{FormatAgo(LastUploadAt.Value)} ({LastUploadAccepted} accepted, {LastUploadDuplicates} dup, {LastUploadRejected} rejected)";
 
-        return string.Join("\n",
-            "GWYF COMMUNITY NETWORK",
-            $"HOOK            {HookStatus}",
-            $"GAME BUILD      {GameBuild}",
-            $"OBSERVER        {ObserverId}",
-            $"API             {(ServiceOnline ? "ONLINE" : "OFFLINE")}",
-            $"QUEUE           {PendingUploads} pending",
-            $"LAST SEARCH     {lastSearch}",
-            $"LAST UPLOAD     {lastUpload}",
-            $"CLOCK           {ClockStatus}",
-            $"LAST ERROR      {LastError ?? "none"}");
+        lines.Add("");
+        lines.Add($"Game build:   {DisplayGameBuild}");
+        lines.Add($"Game support: SUPPORTED");
+        lines.Add($"Hook:         {HookStatus} ({HookAdapter})");
+        lines.Add($"Observer:     {ObserverId}");
+        lines.Add($"Server:       {(ServiceOnline ? "CONNECTED" : "UNREACHABLE — observations still queue locally; retries continue")}");
+        lines.Add($"Ingest:       ENABLED (config v{Gate.Config?.ConfigVersion ?? 0}, min client {Gate.Config?.MinimumClientVersion ?? "?"})");
+        if (Gate.UpdateAvailable)
+            lines.Add($"Update:       a newer client ({Gate.Config?.LatestClientVersion ?? "?"}) is available");
+        lines.Add($"Last successful send: {lastUpload}");
+        lines.Add($"Last batch:   {(LastRejectedReason is null ? lastUpload : LastRejectedReason)}");
+        lines.Add($"Queue:        {PendingUploads} pending");
+        lines.Add($"Last search:  {lastSearch}");
+        lines.Add($"Clock:        {ClockStatus}");
+        lines.Add($"Last error:   {LastError ?? "none"}");
+        return Join(lines);
     }
+
+    private string DisplayGameBuild =>
+        string.IsNullOrEmpty(GameBuild) ? "unknown" : GameBuild;
+
+    private static string Join(List<string> lines) => string.Join("\n", lines);
 
     private static string FormatAgo(DateTimeOffset at)
     {

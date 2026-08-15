@@ -152,8 +152,8 @@ public sealed class LobbyObserver
 /// <summary>Version surfaces shared by all emitters and the diagnostics panel.</summary>
 public static class ModVersions
 {
-    public const string Mod = "0.2.0";
-    public const string Client = "0.2.0";
+    public const string Mod = "0.3.0";
+    public const string Client = "0.3.0";
     public const string HookAdapter = "gwyf-lobby-hook-v1";
     public static string? GameBuild { get; set; }
     public static int ProtocolVersion => 1;

@@ -19,7 +19,7 @@ cannot be honestly unit-tested outside the game — this file is the honest plac
 ```sh
 # game-free mod core + signature/canonical/queue/observer tests
 dotnet build mod/GWYFCommunityNetwork.csproj
-dotnet test mod/test/GWYFCommunityNetwork.Tests.csproj   # 21 tests
+dotnet test mod/test/GWYFCommunityNetwork.Tests.csproj   # 38 tests
 
 # regenerate the TS-side golden fixtures (committed outputs must not drift)
 npx tsx scripts/src/fixtures/generate.ts
@@ -189,7 +189,7 @@ Checklist:
 - [ ] B closes → lobby progresses `active → likely_active → stale → expired`; decay captures saved
 - [ ] `/v1/lobbies` retains history: `status: expired`, `lastSeenAt` at B's last sighting
 - [ ] Old-sighting replay does not resurrect it (`/v1/lobbies/live` stays empty)
-- [ ] No code changes required → tag `v0.2.0`
+- [ ] No code changes required → tag `v0.3.0`
 
 ## Packaged-build smoke (release acceptance)
 
@@ -229,7 +229,7 @@ Checklist (covers the earlier quiet-logs smoke plus artifact and persistence):
       per ack — nothing per-sighting
 - [ ] Ingest accepted server-side (row exists / `/v1/lobbies/live` returns the lobby)
 - [ ] Restart: same observer id, same config values, clean startup
-- [ ] No code changes required → tag `v0.2.0`
+- [ ] No code changes required → tag `v0.3.0`
 
 ## Setup exe smoke (release acceptance — the "dude in the Discord" test)
 
@@ -282,12 +282,48 @@ Checklist:
       no crash
 - [ ] No code changes required → installer slice accepted
 
+## Compatibility gate (0.3.0)
+
+The client fetches `GET /v1/client/config` before any hook attaches. Every state
+is distinct and fail-closed; the server contract never redefines how the client
+interprets the game.
+
+```text
+STATUS  WORKING                                   observation active
+STATUS  CONFIG SERVER UNREACHABLE                 contract not served / malformed → nothing observed
+STATUS  UNSUPPORTED GAME BUILD                    installed build not in supported list → nothing observed
+STATUS  CLIENT UPDATE REQUIRED                    client below server minimum, or protocol mismatch → nothing observed
+STATUS  INGEST DISABLED                           server killed ingest (or config opt-out) → nothing observed
+STATUS  SERVER UNREACHABLE                        gate passed, server down later → view queues, retries keep going
+```
+
+Being behind `latestClientVersion` while `>= minimumClientVersion` is **allowed** and
+shown as a notice (`Update: a newer client (X) is available`) — it is never a blocked state.
+
+In-game checks:
+
+- [ ] Start API, launch → log `compatibility gate: WORKING`, then `observation started`; hook attaches
+- [ ] `diagnostics.txt` shows `STATUS  WORKING` + `Game build`/`Hook adapter`/mod version
+- [ ] API stopped, launch → `STATUS  CONFIG SERVER UNREACHABLE`, no hook, no sightings, game unharmed
+- [ ] Set `CLIENT_SUPPORTED_GAME_BUILDS=304,305` (server) → client on build 303 shows
+      `STATUS  UNSUPPORTED GAME BUILD` with installed + supported builds, nothing observed
+- [ ] Set `CLIENT_MIN_VERSION=0.9.0` (server) → `STATUS  CLIENT UPDATE REQUIRED`, nothing observed
+- [ ] Set `CLIENT_INGEST_ENABLED=false` (server) → `STATUS  INGEST DISABLED`, nothing observed
+- [ ] Serve a contract with `protocolVersion=2` → `STATUS  CLIENT UPDATE REQUIRED`, nothing observed
+- [ ] Serve `minimumClientVersion=0.3.0`, `latestClientVersion=0.9.0` while running
+      0.3.0 → `STATUS  WORKING` with `Update: a newer client (0.9.0) is available`,
+      observation still active
+- [ ] Gate WORKING, then stop API mid-session → `STATUS  SERVER UNREACHABLE`, sightings queue;
+      restart API → flush continues (unit: `PostGateOutage_KeepsObservationRunning`)
+- [ ] `network.enabled=false` in config → `STATUS  INGEST DISABLED`, no fetch attempted
+
 ## Release
 
 ```text
-git tag -a v0.2.0 -m "Distributed Observation"
-git push origin v0.2.0
+git tag -a v0.3.0 -m "Zero-config compatibility gate"
+git push origin v0.3.0
 ```
 
-Milestone: independent game clients produce signed lobby observations that
-reconcile deterministically into a single freshness-aware network view.
+Milestone: every client resolves an authoritative compatibility contract at
+launch, observes only what the server accepts, and never conflates a gate block
+with a transient outage.

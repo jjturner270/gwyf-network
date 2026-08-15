@@ -1,5 +1,6 @@
 using BepInEx;
 using BepInEx.Unity.IL2CPP;
+using GwyfCommunity.Compatibility;
 using GwyfCommunity.Config;
 using GwyfCommunity.Diagnostics;
 using GwyfCommunity.GameRuntime;
@@ -12,7 +13,7 @@ using GwyfCommunity.Observation;
 
 namespace GwyfCommunity;
 
-[BepInPlugin("com.gwyf.community", "GWYF Community Network", "0.2.0")]
+[BepInPlugin("com.gwyf.community", "GWYF Community Network", "0.3.0")]
 [BepInProcess("Golf With Your Friends.exe")]
 [BepInProcess("Golf With Your Friends")]
 public sealed class Plugin : BasePlugin
@@ -21,10 +22,14 @@ public sealed class Plugin : BasePlugin
     private DiagnosticsPanel _diagnostics = new();
     private ObservationQueue _queue = null!;
     private NetworkClient _network = null!;
-    private UnityLobbyHook _lobbyHook = null!;
-    private LobbyObserver _lobbyObserver = null!;
+    private UnityLobbyHook? _lobbyHook;
+    private LobbyObserver? _lobbyObserver;
     private CancellationTokenSource _shutdown = new();
     private Task _flushWorker = Task.CompletedTask;
+    private Task? _startupTask;
+
+    /// <summary>Set only when the compatibility gate has granted observation.</summary>
+    private volatile bool _observationAllowed;
 
     public override void Load()
     {
@@ -89,7 +94,67 @@ public sealed class Plugin : BasePlugin
             }
         };
 
-        // observation sources ------------------------------------------------
+        // compatibility gate + observation sources ---------------------------------
+        // Load() is synchronous; the gate runs on a background task and no
+        // game-bound hook attaches unless the server contract grants observation.
+        _startupTask = Task.Run(() => StartupObservationAsync(config, log, stateDir, _shutdown.Token));
+
+        // flush worker --------------------------------------------------------
+        _flushWorker = Task.Run(() => FlushWorkerAsync(config, _shutdown.Token));
+    }
+
+    private async Task StartupObservationAsync(ModConfig config, GameLog log, string stateDir, CancellationToken ct)
+    {
+        try
+        {
+            // user opt-out: no config fetch, no observation, no participation
+            if (!config.NetworkEnabled)
+            {
+                _diagnostics.Gate = new GateResult(ClientStatus.IngestDisabled,
+                    "Network observation is disabled in configuration. No data will be sent.", null);
+                _diagnostics.GateResolved = true;
+                _observationAllowed = false;
+                Log.LogInfo("compatibility gate: INGEST DISABLED (network disabled in config)");
+                WriteStateFiles(stateDir);
+                return;
+            }
+
+            var fetched = await _network.FetchClientConfigAsync(ct);
+            var gate = CompatibilityGate.Evaluate(fetched, ModVersions.Client, ModVersions.GameBuild);
+            _diagnostics.Gate = gate;
+            _diagnostics.GateResolved = true;
+            Log.LogInfo($"compatibility gate: {gate.Status.Label()} — {gate.Detail}");
+            WriteStateFiles(stateDir);
+
+            if (!gate.MayObserve)
+            {
+                _observationAllowed = false;
+                return;
+            }
+
+            _observationAllowed = true;
+            StartObservation(config, log);
+            Log.LogInfo("observation started (compatibility gate passed)");
+            WriteStateFiles(stateDir);
+        }
+        catch (OperationCanceledException)
+        {
+            // shutdown
+        }
+        catch (Exception ex)
+        {
+            // a gate defect must never break the game: fail closed
+            _diagnostics.Gate = CompatibilityGate.Evaluate(null, ModVersions.Client, ModVersions.GameBuild);
+            _diagnostics.GateResolved = true;
+            _diagnostics.LastError = ex.Message;
+            _observationAllowed = false;
+            Log.LogWarning($"compatibility gate aborted: {ex.Message}");
+            WriteStateFiles(stateDir);
+        }
+    }
+
+    private void StartObservation(ModConfig config, GameLog log)
+    {
         _lobbyHook = new UnityLobbyHook(log, _diagnostics,
             config.LobbyObservationEnabled ? new SessionBrowserBindings(log, Log, _diagnostics, config.VerboseLogging) : null);
         _lobbyHook.Start();
@@ -115,9 +180,6 @@ public sealed class Plugin : BasePlugin
 
         // course observation remains opt-in until fingerprints are validated live
         Log.LogInfo("course observation disabled (real game hook pending)");
-
-        // flush worker --------------------------------------------------------
-        _flushWorker = Task.Run(() => FlushWorkerAsync(config, _shutdown.Token));
     }
 
     private async Task FlushWorkerAsync(ModConfig config, CancellationToken ct)
@@ -129,6 +191,7 @@ public sealed class Plugin : BasePlugin
             {
                 await Task.Delay(delay, ct);
                 if (!config.NetworkEnabled) continue;
+                if (!_observationAllowed) continue; // gate pending or denied
                 if (!_network.IsRegistered)
                 {
                     try
@@ -197,7 +260,7 @@ public sealed class Plugin : BasePlugin
     private void OnDestroy()
     {
         _shutdown.Cancel();
-        _lobbyHook.Stop();
+        _lobbyHook?.Stop();
         _queue.Persist();
         try
         {

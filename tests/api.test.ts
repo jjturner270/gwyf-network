@@ -79,6 +79,39 @@ beforeAll(async () => {
   await api.ready();
 });
 
+describe("client compatibility config", () => {
+  it("serves the compatibility contract used to gate clients", async () => {
+    const response = await api.inject({ method: "GET", url: "/v1/client/config" });
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.protocolVersion).toBe(1);
+    expect(typeof body.configVersion).toBe("number");
+    expect(body.minimumClientVersion).toBe("0.3.0");
+    expect(body.latestClientVersion).toBe("0.3.0");
+    expect(body.supportedGameBuilds).toEqual([303]);
+    expect(body.ingestEnabled).toBe(true);
+    expect(response.headers["cache-control"]).toContain("no-store");
+  });
+
+  it("honors env-driven overrides", async () => {
+    const overrideConfig = loadConfig({
+      CLIENT_MIN_VERSION: "0.4.0",
+      CLIENT_SUPPORTED_GAME_BUILDS: "303,304",
+      CLIENT_INGEST_ENABLED: "false",
+      CLIENT_CONFIG_VERSION: "7",
+    });
+    const overrideApp = buildApp({ db, config: overrideConfig });
+    await overrideApp.ready();
+    const response = await overrideApp.inject({ method: "GET", url: "/v1/client/config" });
+    expect(JSON.parse(response.body)).toMatchObject({
+      configVersion: 7,
+      minimumClientVersion: "0.4.0",
+      supportedGameBuilds: [303, 304],
+      ingestEnabled: false,
+    });
+  });
+});
+
 describe("observer registration", () => {
   it("registers an observer id derived from its public key", async () => {
     const pair = generateObserverKeyPair();

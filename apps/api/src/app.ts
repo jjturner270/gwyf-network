@@ -5,6 +5,7 @@ import { buildDeps, type AppDeps } from "./deps.js";
 import { observersRoutes } from "./routes/observers.js";
 import { ingestRoutes } from "./routes/ingest.js";
 import { lobbiesRoutes } from "./routes/lobbies.js";
+import { clientConfigRoutes } from "./routes/client-config.js";
 
 export interface BuildAppOptions {
   db: GwyfDb;
@@ -35,6 +36,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     service: "gwyf-community",
     version: "0.1.0",
     endpoints: [
+      "GET /v1/client/config",
       "POST /v1/observers",
       "POST /v1/ingest/lobby-sightings",
       "POST /v1/ingest/course-sightings",
@@ -50,6 +52,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   observersRoutes(app, deps);
   ingestRoutes(app, deps);
   lobbiesRoutes(app, deps);
+  clientConfigRoutes(app, deps);
 
   return app;
 }

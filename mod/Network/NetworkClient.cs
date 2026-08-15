@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using GwyfCommunity.Compatibility;
 using GwyfCommunity.Identity;
 
 namespace GwyfCommunity.Network;
@@ -110,6 +111,53 @@ public sealed class NetworkClient
         catch (HttpRequestException ex)
         {
             LastError = $"network failure: {ex.Message}";
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Fetches the compatibility contract (GET /v1/client/config) before any
+    /// observation starts. Fail-closed on the client side: a transport failure,
+    /// non-2xx response, or malformed payload surfaces LastError and returns
+    /// null — the caller then blocks observation. Never throws for network-level
+    /// failures.
+    /// </summary>
+    public async Task<ClientConfig?> FetchClientConfigAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var response = await _http.GetAsync(new Uri(_baseUrl, "/v1/client/config"), ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                var status = (int)response.StatusCode;
+                var responseBody = await response.Content.ReadAsStringAsync(ct);
+                LastError = $"config HTTP {status}: {Truncate(responseBody, 200)}";
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync(ct);
+            var config = JsonSerializer.Deserialize<ClientConfig>(json);
+            if (config is null)
+            {
+                LastError = "config response was empty";
+                return null;
+            }
+            LastError = null;
+            return config;
+        }
+        catch (TaskCanceledException)
+        {
+            LastError = $"config request timeout ({_requestTimeout.TotalSeconds:0}s)";
+            return null;
+        }
+        catch (HttpRequestException ex)
+        {
+            LastError = $"config network failure: {ex.Message}";
+            return null;
+        }
+        catch (JsonException)
+        {
+            LastError = "config response was not valid JSON";
             return null;
         }
     }

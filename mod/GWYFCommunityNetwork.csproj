@@ -8,7 +8,7 @@
     <AssemblyName>GWYFCommunityNetwork</AssemblyName>
     <RootNamespace>GwyfCommunity</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
   </PropertyGroup>
 
   <!-- Reproducible release builds: same inputs → same DLL bytes. -->

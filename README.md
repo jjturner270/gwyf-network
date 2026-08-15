@@ -39,6 +39,7 @@ Not yet built (deliberately): map atlas, course fingerprints, accounts, active s
 
 ```
 GWYF client (mod)        → sensor
+GET  /v1/client/config   → compatibility gate (fail-closed before observing)
 POST /v1/ingest/*        → collector (signed, validated)
 SQLite (append-only)     → memory
 derivation services      → interpretation (on-read, pure over sightings)
@@ -80,7 +81,7 @@ curl -s localhost:3000/v1/lobbies/live
 The emit script simulates three lobbies: one corroborated by both observers, one that fades (watch it degrade `active → likely_active → stale → expire`), one single-observer. Observer keys persist in `scripts/.keys/` so restarts keep the same identity.
 
 ```bash
-pnpm test               # 62 tests: protocol, derivation, reconciliation, API chain
+pnpm test               # 64 tests: protocol, derivation, reconciliation, API chain
 pnpm build              # typecheck + compile all packages
 ```
 
@@ -88,6 +89,7 @@ pnpm build              # typecheck + compile all packages
 
 | Method | Path | Notes |
 | --- | --- | --- |
+| GET | `/v1/client/config` | compatibility contract the client gates against (min client version, supported game builds, ingest enabled) |
 | POST | `/v1/observers` | register an ed25519 public key → observer id |
 | POST | `/v1/ingest/lobby-sightings` | signed, `202` (or `duplicate`), `422` on clock skew |
 | POST | `/v1/ingest/course-sightings` | same contract |
