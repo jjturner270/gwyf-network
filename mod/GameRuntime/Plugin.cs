@@ -76,6 +76,8 @@ public sealed class Plugin : BasePlugin
             _diagnostics.LastUploadDuplicates += duplicates;
             _diagnostics.LastUploadRejected += rejected;
             _diagnostics.PendingUploads = _queue.PendingCount;
+            var settled = accepted + duplicates + rejected;
+            Log.LogInfo($"flushed {settled} sighting{(settled == 1 ? "" : "s")} (accepted={accepted}, duplicates={duplicates}, rejected={rejected})");
             if (rejected > 0)
             {
                 _diagnostics.LastRejectedReason = $"{rejected} of {accepted + duplicates + rejected} rejected by server";

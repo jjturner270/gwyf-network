@@ -33,11 +33,15 @@ public sealed class SessionBrowserBindings : ILobbyHookBindings
     public string AdapterName => "gwyf-lobby-hook-v1";
     public bool IsAttached => _sink is not null;
 
+    /// <summary>Per-session detail dumps; off by default so menu churn stays quiet.</summary>
+    public bool Verbose { get; }
+
     public SessionBrowserBindings(IModLog log, ManualLogSource bepInExLog, DiagnosticsPanel diagnostics)
     {
         _log = log;
         _bepInExLog = bepInExLog;
         _diagnostics = diagnostics;
+        Verbose = Environment.GetEnvironmentVariable("GWYF_VERBOSE") is { Length: > 0 } v && v is "1" or "true";
     }
 
     public void Attach(ILobbyHookSink sink)
@@ -232,13 +236,16 @@ internal static class PluginPatches
 
             _owner?.Diagnostics.RecordSearch(results.Count, results.Select(r => r.LobbyId ?? "").ToArray());
             owner.Log.Info($"[Hook] search refresh: {results.Count} sessions");
-            for (var i = 0; i < results.Count; i++)
+            if (owner.Verbose)
             {
-                var s = results[i];
-                owner.Log.Info($"[Hook] session[{i}]: id={s.LobbyId ?? "null"} name={s.Name ?? "null"} members={s.MemberCount?.ToString() ?? "null"}/{s.Capacity?.ToString() ?? "null"} map={s.MapName ?? "null"} mode={s.GameMode ?? "null"}");
-                foreach (var meta in s.Metadata ?? new Dictionary<string, string>())
+                for (var i = 0; i < results.Count; i++)
                 {
-                    owner.Log.Info($"[Hook]   {meta.Key}={meta.Value}");
+                    var s = results[i];
+                    owner.Log.Info($"[Hook] session[{i}]: id={s.LobbyId ?? "null"} name={s.Name ?? "null"} members={s.MemberCount?.ToString() ?? "null"}/{s.Capacity?.ToString() ?? "null"} map={s.MapName ?? "null"} mode={s.GameMode ?? "null"}");
+                    foreach (var meta in s.Metadata ?? new Dictionary<string, string>())
+                    {
+                        owner.Log.Info($"[Hook]   {meta.Key}={meta.Value}");
+                    }
                 }
             }
 
